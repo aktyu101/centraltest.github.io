@@ -1,0 +1,10 @@
+{
+  "description": "Manage and track long-term care recipients in home care facilities with an intuitive interface designed for care providers and administrators.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
