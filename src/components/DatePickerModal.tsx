@@ -93,6 +93,9 @@ export default function DatePickerModal({
     );
   };
 
+  const years = Array.from({ length: 86 }, (_, i) => 1950 + i); // 1950 ~ 2035
+  const months = Array.from({ length: 12 }, (_, i) => i); // 0 ~ 11
+
   return (
     <div 
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in"
@@ -134,9 +137,41 @@ export default function DatePickerModal({
                 <polyline points="15 18 9 12 15 6"></polyline>
               </svg>
             </button>
-            <span className="text-[15px] font-bold text-[#0e1225]">
-              {mode === 'date' ? `${currentYear}년 ${currentMonth + 1}월` : `${currentYear}년`}
-            </span>
+            <div className="flex items-center gap-1.5">
+              {/* 연도 셀렉트 */}
+              <select
+                value={currentYear}
+                onChange={(e) => {
+                  const newY = parseInt(e.target.value, 10);
+                  setViewDate(new Date(newY, currentMonth, 1));
+                }}
+                className="h-[30px] px-2 py-0.5 bg-[#f8fafc] border border-[#c2cfdf] rounded-[6px] text-[13.5px] font-bold text-[#0e1225] focus:outline-none focus:border-[#2a3461] cursor-pointer"
+              >
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    {y}년
+                  </option>
+                ))}
+              </select>
+
+              {/* 월 셀렉트 (date 모드일 때만) */}
+              {mode === 'date' && (
+                <select
+                  value={currentMonth}
+                  onChange={(e) => {
+                    const newM = parseInt(e.target.value, 10);
+                    setViewDate(new Date(currentYear, newM, 1));
+                  }}
+                  className="h-[30px] px-2 py-0.5 bg-[#f8fafc] border border-[#c2cfdf] rounded-[6px] text-[13.5px] font-bold text-[#0e1225] focus:outline-none focus:border-[#2a3461] cursor-pointer"
+                >
+                  {months.map((m) => (
+                    <option key={m} value={m}>
+                      {m + 1}월
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
             <button
               onClick={mode === 'date' ? handleNextMonth : handleNextYear}
               className="p-1.5 rounded-lg text-[#64748b] hover:text-[#0e1225] hover:bg-[#f1f5f9] transition-colors cursor-pointer"
