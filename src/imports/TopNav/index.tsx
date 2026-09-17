@@ -20,7 +20,6 @@ export default function TopNav({ className }: { className?: string }) {
                       className="absolute block inset-0 size-full"
                       fill="none"
                       height="25"
-                      preserveAspectRatio="none"
                       viewBox="0 0 20 25"
                       width="20"
                     >

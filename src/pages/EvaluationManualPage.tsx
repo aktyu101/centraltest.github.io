@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/Button'
 
 // ─── Types & Constants ────────────────────────────────────────────────────────
@@ -923,7 +923,7 @@ const INITIAL_INDICATORS: CategoryIndicator[] = [
     evalMethodType: '기록, 면담',
     totalTargetCount: 1,
     completedCount: 1,
-    mustHaveForms: ['기관 운영규정', '분기별 직원회의록', '회의 참석자 서명부', '회의 사진'],
+    mustHaveForms: ['운영규정'],
     dangerCheck: '운영규정 필수항목(이용료, 직원복무, 고충처리 등) 누락 또는 회의 참석 서명 미비 시 감점',
     missingList: [],
     originalManual: {
@@ -1754,6 +1754,15 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
   const [allManualSearch, setAllManualSearch] = useState<string>('')
   const [allManualCatFilter, setAllManualCatFilter] = useState<'all' | CategoryType>('all')
 
+  // 개정버전 변경 시 지표 목록 업데이트
+  useEffect(() => {
+    if (selectedRevisionYear === '2024-2026') {
+      setIndicators(INITIAL_INDICATORS)
+    } else {
+      setIndicators([]) // 과거 버전 데이터가 없을 경우 빈 배열 처리
+    }
+  }, [selectedRevisionYear])
+
   // 카테고리별 필터링
   const currentCategoryIndicators = indicators.filter(ind => ind.category === activeCategory)
   const currentIndicator = indicators.find(ind => ind.number === selectedIndicatorNum) ?? currentCategoryIndicators[0]
@@ -1836,8 +1845,8 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
             </span>
           </div>
 
-          {/* 카테고리 3대 탭 */}
-          <div className="flex items-center gap-1.5 bg-[#f1f5f9] p-1.5 rounded-[8px] border border-[#cbd5e1]">
+          {/* 카테고리 3대 탭 (Figma Segment_toggle 스타일) */}
+          <div className="flex items-center gap-0.5 bg-[#f1f5f9] p-[3px] rounded-[8px] h-[36px] border border-[#cbd5e1]">
             {[
               { id: 'beneficiary' as CategoryType, label: '수급자 관리', count: indicators.filter(i => i.category === 'beneficiary').length, missing: beneficiaryMissingCount },
               { id: 'staff' as CategoryType, label: '종사자 관리', count: indicators.filter(i => i.category === 'staff').length, missing: staffMissingCount },
@@ -1848,21 +1857,21 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
                 <button
                   key={cat.id}
                   onClick={() => handleCategoryChange(cat.id)}
-                  className={`h-[32px] px-3.5 rounded-[6px] text-[14px] font-extrabold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${isActive
-                      ? 'bg-[#2a3461] text-white shadow-xs'
-                      : 'text-[#475569] hover:text-[#0e1225] hover:bg-white/80'
+                  className={`h-full px-3.5 rounded-[5px] text-[14px] flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${isActive
+                    ? 'font-bold bg-[#2a3461] text-white shadow-sm'
+                    : 'font-bold text-[#64748b] hover:text-[#0e1225] hover:bg-black/5'
                     }`}
                 >
                   <span>{cat.label}</span>
                   <span
-                    className={`h-[20px] px-1.5 inline-flex items-center justify-center text-[11.5px] font-extrabold rounded-[4px] ${isActive ? 'bg-white/20 text-white' : 'bg-[#e2e8f0] text-[#334155]'
+                    className={`h-[18px] px-1.5 inline-flex items-center justify-center text-[11.5px] font-bold rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-[#e2e8f0] text-[#475569]'
                       }`}
                   >
                     {cat.count}
                   </span>
                   {cat.missing > 0 && (
                     <span
-                      className={`h-[20px] px-1.5 inline-flex items-center justify-center text-[11.5px] font-extrabold rounded-[4px] ${isActive ? 'bg-[#e23a32] text-white' : 'bg-[#fee2e2] text-[#dc2626]'
+                      className={`h-[18px] px-1.5 inline-flex items-center justify-center text-[11.5px] font-bold rounded-full ${isActive ? 'bg-[#e23a32] text-white' : 'bg-[#fee2e2] text-[#dc2626]'
                         }`}
                     >
                       {cat.missing}건 누락
@@ -1882,18 +1891,29 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
             <strong className="text-[15px] text-[#e11d48] font-black">{totalMissingCount}건</strong>
           </div>
 
+          {/* 개정버전 선택 셀렉트 박스 */}
+          <select
+            value={selectedRevisionYear}
+            onChange={(e) => setSelectedRevisionYear(e.target.value as any)}
+            className="h-[34px] px-2.5 text-[13.5px] font-bold text-[#0e1225] border border-[#cbd5e1] rounded-[6px] outline-none focus:border-[#1e3a8a] focus:ring-1 focus:ring-[#1e3a8a] bg-white cursor-pointer shadow-2xs"
+          >
+            <option value="2024-2026">2024-2026 개정판</option>
+            <option value="2021-2023">2021-2023 개정판</option>
+            <option value="2018-2020">2018-2020 개정판</option>
+          </select>
+
           {/* 전체 매뉴얼 원문 고시 열람 버튼 */}
           <Button
             type="Sub"
             size="Medium"
-            icon="Search"
+            icon="Pdf"
             onClick={() => {
               setAllManualSelectedNum(selectedIndicatorNum)
               setIsAllManualModalOpen(true)
             }}
             title="공단 노인장기요양기관 평가매뉴얼 전체 고시 열람"
           >
-            전체 평가매뉴얼 원문 고시
+            평가매뉴얼
           </Button>
         </div>
       </header>
@@ -1969,10 +1989,10 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
                         key={ind.number}
                         onClick={() => setSelectedIndicatorNum(ind.number)}
                         className={`cursor-pointer transition-colors border-b border-[#c2cfdf] last:border-b-0 ${isSelected
-                            ? 'bg-[#d9ecff] font-semibold text-[#1e3a8a]'
-                            : idx % 2 === 1
-                              ? 'bg-[#fafbfc] hover:bg-[#f0f4fa]'
-                              : 'bg-white hover:bg-[#f0f4fa]'
+                          ? 'bg-[#d9ecff] font-semibold text-[#1e3a8a]'
+                          : idx % 2 === 1
+                            ? 'bg-[#fafbfc] hover:bg-[#f0f4fa]'
+                            : 'bg-white hover:bg-[#f0f4fa]'
                           }`}
                       >
                         {/* 지표코드 */}
@@ -2206,8 +2226,8 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
                         type="button"
                         onClick={() => handleToggleIndicatorTracking(currentIndicator.number)}
                         className={`h-[24px] px-2 inline-flex items-center gap-1 rounded-full text-[11.5px] font-extrabold transition-all cursor-pointer border ${currentIndicator.isTrackingEnabled !== false
-                            ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
-                            : 'bg-[#f1f5f9] text-[#64748b] border-[#cbd5e1]'
+                          ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]'
+                          : 'bg-[#f1f5f9] text-[#64748b] border-[#cbd5e1]'
                           }`}
                         title={currentIndicator.isTrackingEnabled !== false ? '클릭 시 외부/자체 관리 모드로 전환(누락 집계 제외)' : '클릭 시 ERP 점검 관리 모드 활성화'}
                       >
@@ -2280,8 +2300,8 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
                               <div
                                 key={missing.id}
                                 className={`border rounded-[4px] p-3 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 transition-all shadow-2xs ${isDone
-                                    ? 'bg-[#f8fafc] border-[#cbd5e1] opacity-75'
-                                    : 'bg-white border-[#fca5a5] hover:border-[#dc2626]'
+                                  ? 'bg-[#f8fafc] border-[#cbd5e1] opacity-75'
+                                  : 'bg-white border-[#fca5a5] hover:border-[#dc2626]'
                                   }`}
                               >
                                 {/* 좌측: 대상자 정보 + 계약급여 + 빠진 서식 + 사유 */}
@@ -2289,8 +2309,8 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span
                                       className={`h-[20px] px-1.5 inline-flex items-center justify-center text-[11px] font-extrabold rounded-[3px] shrink-0 ${isDone
-                                          ? 'bg-[#e2e8f0] text-[#475569]'
-                                          : 'bg-[#dc2626] text-white'
+                                        ? 'bg-[#e2e8f0] text-[#475569]'
+                                        : 'bg-[#dc2626] text-white'
                                         }`}
                                     >
                                       {isDone ? '구비 완료' : '누락 (미구비)'}
@@ -2315,8 +2335,8 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
                                   <div className="flex items-center gap-2 flex-wrap text-[13px]">
                                     <span
                                       className={`font-bold px-2 py-0.5 rounded-[3px] border shrink-0 ${isDone
-                                          ? 'bg-[#f1f5f9] text-[#64748b] border-[#cbd5e1]'
-                                          : 'bg-[#fee2e2] text-[#dc2626] border-[#fecaca]'
+                                        ? 'bg-[#f1f5f9] text-[#64748b] border-[#cbd5e1]'
+                                        : 'bg-[#fee2e2] text-[#dc2626] border-[#fecaca]'
                                         }`}
                                     >
                                       {missing.missingDocName}
@@ -2333,8 +2353,8 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
                                     type="button"
                                     onClick={() => handleToggleMissingItem(missing.id)}
                                     className={`h-[30px] px-3 inline-flex items-center gap-1.5 rounded-[4px] text-[12.5px] font-extrabold transition-all cursor-pointer border shadow-2xs active:scale-[0.98] ${isDone
-                                        ? 'bg-[#f0fdf4] text-[#166534] border-[#86efac] hover:bg-[#dcfce7]'
-                                        : 'bg-[#1e3a8a] text-white border-[#1e3a8a] hover:bg-[#172554]'
+                                      ? 'bg-[#f0fdf4] text-[#166534] border-[#86efac] hover:bg-[#dcfce7]'
+                                      : 'bg-[#1e3a8a] text-white border-[#1e3a8a] hover:bg-[#172554]'
                                       }`}
                                     title={isDone ? '클릭 시 누락(미구비) 상태로 되돌립니다.' : '클릭 시 구비 완료 상태로 저장합니다.'}
                                   >
@@ -2514,8 +2534,8 @@ export default function EvaluationManualPage({ onBackToBeneficiaries }: Props) {
                       key={ind.number}
                       onClick={() => setAllManualSelectedNum(ind.number)}
                       className={`p-2.5 rounded-[4px] text-left border transition-all cursor-pointer flex flex-col gap-1 ${allManualSelectedNum === ind.number
-                          ? 'bg-[#d9ecff] border-[#1e3a8a] text-[#1e3a8a] font-bold shadow-2xs'
-                          : 'bg-white border-[#e2e8f0] text-[#334155] hover:bg-[#f1f5f9]'
+                        ? 'bg-[#d9ecff] border-[#1e3a8a] text-[#1e3a8a] font-bold shadow-2xs'
+                        : 'bg-white border-[#e2e8f0] text-[#334155] hover:bg-[#f1f5f9]'
                         }`}
                     >
                       <div className="flex items-center justify-between text-[11.5px]">

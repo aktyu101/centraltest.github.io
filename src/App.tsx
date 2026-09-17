@@ -2,6 +2,9 @@ import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import svgPaths from '@/imports/SideBar/svg-o4o6c5ginm'
 import EvaluationManualPage from './pages/EvaluationManualPage'
+import EmployeeManagementPage from './pages/EmployeeManagementPage'
+import BenefitCalculatorModal from './components/BenefitCalculatorModal'
+import DatePickerModal from './components/DatePickerModal'
 import topNavSvg from '@/imports/TopNav/svg-71k32nm55t'
 import rightSvg from '@/imports/Right/svg-39sn13e4v2'
 
@@ -212,8 +215,8 @@ const GRADE_COLOR: Record<string, string> = {
   '인지지원': 'bg-purple-100 text-purple-700',
 }
 function gradeDisplay(g: string) {
-  if (g === '인지지원') return '인지'
-  return `${g}등급`
+  if (g.includes('인지')) return '인지'
+  return g.replace(/[^0-9]/g, '') || g
 }
 function gradeKey(grade: string) {
   if (grade.includes('인지')) return '인지지원'
@@ -222,12 +225,12 @@ function gradeKey(grade: string) {
 
 // 2026년 공단 고시 장기요양 재가급여 월 한도액
 const GRADE_MONTHLY_LIMIT: Record<string, number> = {
-  '1': 2069900,
-  '2': 1869600,
-  '3': 1453100,
-  '4': 1341000,
-  '5': 1151600,
-  '인지지원': 643700,
+  '1': 2512900,
+  '2': 2331200,
+  '3': 1528200,
+  '4': 1409700,
+  '5': 1208900,
+  '인지지원': 676320,
 }
 
 function getMonthlyLimit(grade: string, customLimit?: number): number {
@@ -240,11 +243,458 @@ function formatCurrency(val: number): string {
   return `${val.toLocaleString()}원`
 }
 
-const SERVICE_SHORT: Record<string, string> = { '방문요양': '요양', '방문목욕': '목욕', '방문간호': '간호' }
+const SERVICE_SHORT: Record<string, string> = {
+  '방문요양': '요',
+  '방문목욕': '목',
+  '방문간호': '간',
+  '요양': '요',
+  '목욕': '목',
+  '간호': '간',
+}
 const SERVICE_COLORS: Record<string, string> = {
   '방문요양': 'bg-svc-care-bg text-svc-care-text border-svc-care-border',
   '방문목욕': 'bg-svc-bath-bg text-svc-bath-text border-svc-bath-border',
   '방문간호': 'bg-svc-nurse-bg text-svc-nurse-text border-svc-nurse-border',
+}
+
+const INITIAL_SCHEDULE_DATA = {
+  '일간': [
+    { id: 'd1', status: '미완료', title: '방문요양 급여제공기록지 발송', date: '9월 15일', enabled: true, autoDetermined: false },
+    { id: 'd2', status: '미완료', title: '방문목욕 욕구평가', date: '9월 15일', enabled: true, autoDetermined: false },
+    { id: 'd3', status: '진행중', title: '방문간호 지시서 갱신', date: '9월 15일', enabled: true, autoDetermined: false },
+    { id: 'd4', status: '완료', title: '전월 급여산정 및 지급', date: '9월 1일', enabled: true, autoDetermined: true },
+  ],
+  '분기별': [
+    { id: 'q1', status: '미완료', title: '수급자 급여제공계획서 재평가', date: '9월 30일', enabled: true, autoDetermined: false },
+    { id: 'q2', status: '미완료', title: '종사자 안전보건 교육', date: '9월 30일', enabled: true, autoDetermined: false },
+  ],
+  '반기별': [
+    { id: 'h1', status: '미완료', title: '소방시설 점검 및 보고', date: '9월 30일', enabled: true, autoDetermined: true },
+  ],
+  '연간': [
+    { id: 'y1', status: '미완료', title: '운영규정 및 지침 점검', date: '12월 31일', enabled: true, autoDetermined: false },
+  ]
+};
+
+function ScheduleListWidget({ className }: { className?: string }) {
+  const [activeTab, setActiveTab] = useState('일간');
+  const tabs = ['일간', '분기별', '반기별', '연간'];
+  const items = INITIAL_SCHEDULE_DATA[activeTab as keyof typeof INITIAL_SCHEDULE_DATA] || [];
+
+  return (
+    <div className={className || "flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-full"}>
+      <div className="flex border-b border-[#c2cfdf] bg-[#fafbfc]">
+        {tabs.map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2 text-[13.5px] font-bold text-center transition-colors border-r border-[#c2cfdf] last:border-r-0 ${activeTab === tab ? 'bg-[#2a3461] text-white' : 'text-[#475569] hover:bg-[#f1f5f9]'}`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-3 flex items-center justify-between border-b border-[#c2cfdf] bg-[#fafbfc]">
+        <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none shrink-0">
+          <span className="w-[4px] h-[16px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
+          {activeTab} 주요 일정 확인
+        </h2>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <ul className="divide-y divide-[#e2e8f0]">
+          {items.map((item, idx) => (
+            <li key={item.id} className="flex items-center justify-between p-3 hover:bg-[#f8fafc] transition-colors">
+              <div className="flex items-center gap-3">
+                <span className={`px-2 py-0.5 rounded-[4px] text-[11px] font-bold border ${item.status === '미완료' ? 'bg-[#fff1f2] text-[#e11d48] border-[#ffe4e6]' : item.status === '진행중' ? 'bg-[#fefce8] text-[#ca8a04] border-[#fef08a]' : 'bg-[#f0fdf4] text-[#16a34a] border-[#dcfce7]'}`}>
+                  {item.status}
+                </span>
+                <span className="text-[13px] font-medium text-[#0e1225]">{item.title}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {activeTab === '일간' && (
+                  <span className="text-[12px] text-[#64748b] font-medium">{item.date}</span>
+                )}
+                <button className="bg-white border border-[#c2cfdf] text-[#2a3461] hover:bg-[#f1f5f9] px-2 py-0.5 rounded-[4px] text-[11px] font-bold transition-colors shadow-xs flex items-center gap-1 group">
+                  바로가기
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:translate-x-0.5 transition-transform"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="p-3 bg-[#f8fafc] border-t border-[#c2cfdf] text-[11.5px] text-[#475569] leading-tight">
+        <strong className="text-[#2a3461]">※</strong> 기관 운영에 필요한 주요 업무 일정을 제공합니다. 업무 진행 상황을 관리해 주세요.
+      </div>
+    </div>
+  );
+}
+
+function BeneficiaryStatsWidget({ data, className }: { data: Beneficiary[], className?: string }) {
+  const activeData = data.filter(d => d.contractStatus === '계약중')
+  const total = activeData.length
+
+  const services = activeData.reduce((acc, curr) => {
+    curr.services.forEach(s => {
+      acc[s] = (acc[s] || 0) + 1
+    })
+    return acc
+  }, {} as Record<string, number>)
+
+  const gradesList = ['1', '2', '3', '4', '5', '인지']
+  const ratesList = ['일반', '감경(40%)', '감경(60%)', '의료', '기초']
+
+  const rateLabel = (r: string) => {
+    if (r === '일반') return '일반 15%'
+    if (r === '감경(40%)') return '감경 9%'
+    if (r === '감경(60%)') return '감경 6%'
+    if (r === '의료') return '의료 6%'
+    return '기초 0%'
+  }
+
+  // Precompute matrix
+  const matrix: Record<string, Record<string, { m: number, f: number }>> = {}
+  gradesList.forEach(g => {
+    matrix[g] = {}
+    ratesList.forEach(r => matrix[g][r] = { m: 0, f: 0 })
+  })
+
+  activeData.forEach(d => {
+    const g = d.grade === '인지지원' ? '인지' : d.grade
+    const r = d.copayHistory[0]?.qualifier ?? '일반'
+    if (matrix[g] && matrix[g][r]) {
+      if (d.gender === '남') matrix[g][r].m++
+      if (d.gender === '여') matrix[g][r].f++
+    }
+  })
+
+  return (
+    <div className={className || "flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] md:col-span-2 row-span-2"}>
+      <div className="p-3 flex items-center justify-between border-b border-[#c2cfdf] bg-[#fafbfc]">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none shrink-0">
+              <span className="w-[4px] h-[16px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
+              수급자 종합 현황 통계
+            </h2>
+            <span className="h-[22px] px-2 inline-flex items-center justify-center bg-[#f1f5f9] text-[#64748b] text-[12px] font-bold rounded-[6px] leading-none whitespace-nowrap">
+              {total}명
+            </span>
+          </div>
+          <div className="flex items-center gap-1 ml-1">
+            <span className="text-[11px] text-[#64748b] font-medium mr-1 tracking-tight">이용자(계약중) :</span>
+            <span className="text-[10px] bg-white text-[#475569] px-1.5 py-0.5 rounded-[4px] font-medium border border-[#cbd5e1] shadow-xs leading-none">
+              방문요양 <strong className="text-[#0e1225] ml-0.5">{services['방문요양'] || 0}</strong>
+            </span>
+            <span className="text-[10px] bg-white text-[#475569] px-1.5 py-0.5 rounded-[4px] font-medium border border-[#cbd5e1] shadow-xs leading-none">
+              방문목욕 <strong className="text-[#0e1225] ml-0.5">{services['방문목욕'] || 0}</strong>
+            </span>
+            <span className="text-[10px] bg-white text-[#475569] px-1.5 py-0.5 rounded-[4px] font-medium border border-[#cbd5e1] shadow-xs leading-none">
+              방문간호 <strong className="text-[#0e1225] ml-0.5">{services['방문간호'] || 0}</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 p-0 overflow-x-auto flex flex-col">
+        <table className="w-full h-full text-[12px] text-center border-collapse min-w-[500px]">
+          <thead>
+            <tr className="bg-[#f8fafc] border-b border-[#e2e8f0] text-[#64748b]">
+              <th className="py-2.5 px-2 font-medium border-r border-[#e2e8f0]">등급 \ 부담률</th>
+              {ratesList.map(r => (
+                <th key={r} className="py-2.5 px-2 font-medium border-r border-[#e2e8f0]">{rateLabel(r)}</th>
+              ))}
+              <th className="py-2.5 px-2 font-bold text-[#0e1225]">합계</th>
+            </tr>
+          </thead>
+          <tbody>
+            {gradesList.map(g => {
+              let rowTotalM = 0;
+              let rowTotalF = 0;
+              return (
+                <tr key={g} className="border-b border-[#e2e8f0] hover:bg-[#f1f5f9] transition-colors h-[14.28%]">
+                  <td className="p-2 border-r border-[#e2e8f0] font-medium text-[#475569] bg-[#f8fafc]">{g}등급</td>
+                  {ratesList.map(r => {
+                    const cell = matrix[g][r];
+                    const t = cell.m + cell.f;
+                    rowTotalM += cell.m;
+                    rowTotalF += cell.f;
+                    return (
+                      <td key={r} className="p-2 border-r border-[#e2e8f0]">
+                        {t > 0 ? (
+                          <div className="flex flex-col items-center justify-center leading-tight gap-0.5">
+                            <span className="font-bold text-[#0e1225]">{t}</span>
+                            <span className="text-[10px] text-[#94a3b8]">(남{cell.m}, 여{cell.f})</span>
+                          </div>
+                        ) : (
+                          <span className="text-[#cbd5e1]">-</span>
+                        )}
+                      </td>
+                    )
+                  })}
+                  <td className="p-2 bg-[#f8fafc]">
+                    {(rowTotalM + rowTotalF) > 0 ? (
+                      <div className="flex flex-col items-center justify-center leading-tight gap-0.5">
+                        <span className="font-bold text-[#0e1225]">{rowTotalM + rowTotalF}</span>
+                        <span className="text-[10px] text-[#94a3b8]">(남{rowTotalM}, 여{rowTotalF})</span>
+                      </div>
+                    ) : (
+                      <span className="text-[#cbd5e1]">-</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+
+            {/* 전체 합계 행 */}
+            <tr className="bg-[#f8fafc] border-b border-[#e2e8f0] h-[14.28%]">
+              <td className="p-2 border-r border-[#e2e8f0] font-bold text-[#0e1225]">합계</td>
+              {ratesList.map(r => {
+                let colM = 0; let colF = 0;
+                gradesList.forEach(g => { colM += matrix[g][r].m; colF += matrix[g][r].f; })
+                const ct = colM + colF;
+                return (
+                  <td key={r} className="p-2 border-r border-[#e2e8f0]">
+                    {ct > 0 ? (
+                      <div className="flex flex-col items-center justify-center leading-tight gap-0.5">
+                        <span className="font-bold text-[#0e1225]">{ct}</span>
+                        <span className="text-[10px] text-[#94a3b8]">(남{colM}, 여{colF})</span>
+                      </div>
+                    ) : (
+                      <span className="text-[#cbd5e1]">-</span>
+                    )}
+                  </td>
+                )
+              })}
+              <td className="p-2 font-bold text-[#0e1225] bg-[#f1f5f9]">
+                <div className="flex flex-col items-center justify-center leading-tight gap-0.5">
+                  <span className="text-[13px] text-[#ef5a27]">{total}</span>
+                  <span className="text-[10px] text-[#94a3b8]">
+                    (남{activeData.filter(d => d.gender === '남').length}, 여{activeData.filter(d => d.gender === '여').length})
+                  </span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function CertExpirationWidget({ data, className }: { data: Beneficiary[], className?: string }) {
+  const [currentDate, setCurrentDate] = useState(new Date('2026-01-01')); // 2026년으로 기본 세팅 (Mock 데이터 기준)
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+
+  const handlePrevMonth = () => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  const handleNextMonth = () => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+
+  const yearStr = currentDate.getFullYear().toString();
+  const monthStr = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+  const targetPrefix = `${yearStr}.${monthStr}`;
+
+  const expiringList = data.filter(d =>
+    d.contractStatus === '계약중' && d.rcgtExpiry.startsWith(targetPrefix)
+  ).sort((a, b) => a.rcgtExpiry.localeCompare(b.rcgtExpiry));
+
+  return (
+    <div className={className || "flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-[220px]"}>
+      <div className="p-3 flex items-center justify-between border-b border-[#c2cfdf] bg-[#fafbfc]">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none shrink-0">
+            <span className="w-[4px] h-[16px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
+            인정만료 예정 수급자
+          </h2>
+          <span className="h-[22px] px-2 inline-flex items-center justify-center bg-[#f1f5f9] text-[#64748b] text-[12px] font-bold rounded-[6px] leading-none whitespace-nowrap">
+            {expiringList.length}명
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button onClick={handlePrevMonth} className="text-[#475569] hover:text-[#0e1225] p-1 cursor-pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <button
+            onClick={() => setIsMonthPickerOpen(true)}
+            className="text-[12.5px] font-bold text-[#0e1225] px-2 py-0.5 rounded-[4px] hover:bg-[#e2e8f0]/60 transition-colors tracking-tight cursor-pointer inline-flex items-center gap-1 border border-transparent hover:border-[#cbd5e1]"
+            title="연월 선택"
+          >
+            <span>{yearStr}년 {currentDate.getMonth() + 1}월</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <button onClick={handleNextMonth} className="text-[#475569] hover:text-[#0e1225] p-1 cursor-pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 p-0 overflow-y-auto bg-white">
+        {expiringList.length > 0 ? (
+          <ul className="divide-y divide-[#e2e8f0]">
+            {expiringList.map(b => (
+              <li key={b.id} className="flex items-center justify-between p-3 hover:bg-[#f8fafc] transition-colors">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-bold text-[#0e1225]">{b.name}</span>
+                  <span className="text-[11px] text-[#475569] bg-[#f1f5f9] px-1.5 py-0.5 rounded-[4px] border border-[#e2e8f0]">{b.grade}등급</span>
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="text-[#ef5a27] font-medium text-[11px] bg-[#fff1f2] px-1.5 py-0.5 rounded-[4px]">만료예정</span>
+                  <span className="text-[#334155] font-semibold">{b.rcgtExpiry}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="flex h-full items-center justify-center text-[#94a3b8] text-[12.5px]">
+            해당 월에 인정만료 예정인 수급자가 없습니다.
+          </div>
+        )}
+      </div>
+
+      {/* 연월 선택 모달 */}
+      <DatePickerModal
+        isOpen={isMonthPickerOpen}
+        onClose={() => setIsMonthPickerOpen(false)}
+        selectedDate={currentDate}
+        onSelectDate={(newDate) => setCurrentDate(newDate)}
+        mode="month"
+        title="인정만료 조회 연월 선택"
+      />
+    </div>
+  )
+}
+
+const DAILY_VISIT_DATA = [
+  { id: 1, time: '19:00~07:00', recipient: '김만종', caregiver: '정금선', service: '방문요양', location: '-' },
+  { id: 2, time: '15:50~16:50', recipient: '김은진', caregiver: '지춘경', service: '방문간호', location: '-' },
+  { id: 3, time: '10:00~11:00', recipient: '홍수남', caregiver: '안샛별', service: '방문간호', location: '-' },
+  { id: 4, time: '12:00~13:00', recipient: '강복희', caregiver: '안샛별', service: '방문간호', location: '-' },
+  { id: 5, time: '07:00~08:00', recipient: '정언년', caregiver: '이진양', service: '가족요양', location: '-' },
+  { id: 6, time: '09:30~10:30', recipient: '오인숙', caregiver: '송옥희', service: '방문간호', location: '-' },
+  { id: 7, time: '10:00~13:00', recipient: '장나순', caregiver: '고삼희', service: '방문요양', location: '-' },
+  { id: 8, time: '07:00~11:00', recipient: '김영덕', caregiver: '김재연', service: '방문요양', location: '-' },
+  { id: 9, time: '17:00~05:00', recipient: '심미자', caregiver: '황윤자', service: '방문요양', location: '-' },
+  { id: 10, time: '13:30~14:30', recipient: '양재만', caregiver: '류호연', service: '방문간호', location: '-' },
+];
+
+function DailyVisitScheduleWidget({ className }: { className?: string }) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+
+  const handlePrevDay = () => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() - 1));
+  const handleNextDay = () => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() + 1));
+
+  const yearStr = currentDate.getFullYear().toString();
+  const monthStr = (currentDate.getMonth() + 1).toString().padStart(2, '0');
+  const dayStr = currentDate.getDate().toString().padStart(2, '0');
+  const dateStr = `${yearStr}.${monthStr}.${dayStr}`;
+
+  return (
+    <div className={className || "flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-[200px]"}>
+      <div className="p-3 flex items-center justify-between border-b border-[#c2cfdf] bg-[#fafbfc]">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none shrink-0">
+            <span className="w-[4px] h-[16px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
+            일일 방문일정
+          </h2>
+          <span className="h-[22px] px-2 inline-flex items-center justify-center bg-[#f1f5f9] text-[#64748b] text-[12px] font-bold rounded-[6px] leading-none whitespace-nowrap">
+            {DAILY_VISIT_DATA.length}건
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button onClick={handlePrevDay} className="text-[#475569] hover:text-[#0e1225] p-1 cursor-pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <button
+            onClick={() => setIsDatePickerOpen(true)}
+            className="text-[12.5px] font-bold text-[#0e1225] px-2 py-0.5 rounded-[4px] hover:bg-[#e2e8f0]/60 transition-colors tracking-tight cursor-pointer inline-flex items-center gap-1 border border-transparent hover:border-[#cbd5e1]"
+            title="날짜 선택"
+          >
+            <span>{dateStr}</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <button onClick={handleNextDay} className="text-[#475569] hover:text-[#0e1225] p-1 cursor-pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-auto">
+        <table className="w-full border-collapse text-[12.5px] text-center min-w-[500px]">
+          <thead className="sticky top-0 bg-[#f8fafc] border-b border-[#e2e8f0] z-10 text-[#475569]">
+            <tr>
+              <th className="py-2 px-2 font-medium border-r border-[#e2e8f0]">NO</th>
+              <th className="py-2 px-2 font-medium border-r border-[#e2e8f0]">방문시간</th>
+              <th className="py-2 px-2 font-medium border-r border-[#e2e8f0]">수급자명</th>
+              <th className="py-2 px-2 font-medium border-r border-[#e2e8f0]">방문요원</th>
+              <th className="py-2 px-2 font-medium border-r border-[#e2e8f0]">서비스</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DAILY_VISIT_DATA.map((row) => (
+              <tr key={row.id} className="border-b border-[#e2e8f0] hover:bg-[#f1f5f9] transition-colors">
+                <td className="p-2 border-r border-[#e2e8f0] text-[#64748b]">{row.id}</td>
+                <td className="p-2 border-r border-[#e2e8f0] font-semibold text-[#0e1225]">{row.time}</td>
+                <td className="p-2 border-r border-[#e2e8f0] font-medium text-[#0e1225]">{row.recipient}</td>
+                <td className="p-2 border-r border-[#e2e8f0] text-[#334155]">{row.caregiver}</td>
+                <td className="p-2 border-r border-[#e2e8f0] text-[#334155]">{row.service}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 날짜 선택 모달 */}
+      <DatePickerModal
+        isOpen={isDatePickerOpen}
+        onClose={() => setIsDatePickerOpen(false)}
+        selectedDate={currentDate}
+        onSelectDate={(newDate) => setCurrentDate(newDate)}
+        mode="date"
+        title="방문일정 일자 선택"
+      />
+    </div>
+  );
+}
+
+function LiabilityInsuranceWidget({ className }: { className?: string }) {
+  const data = [
+    { title: '한국사회복지공제회·요양기관전문직업인배상책임보험공제(재가)', period: '2024-05-09 ~ 2025-05-08', isExpiring: true },
+    { title: '한국사회복지공제회·요양기관전문직업인배상책임보험공제(재가)', period: '2025-05-09 ~ 2026-05-08', isExpiring: true },
+    { title: '한국사회복지공제회·요양기관전문직업인배상책임보험공제(재가)', period: '2026-05-09 ~ 2027-05-09', isExpiring: false },
+  ];
+
+  return (
+    <div className={className || "flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-[200px]"}>
+      <div className="p-3 flex items-center justify-between border-b border-[#c2cfdf] bg-[#fafbfc] cursor-pointer hover:bg-[#f1f5f9] transition-colors">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none shrink-0">
+            <span className="w-[4px] h-[16px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
+            배상책임보험
+          </h2>
+          <span className="h-[20px] px-2 inline-flex items-center justify-center bg-[#fff0ef] text-[#e23a32] text-[11px] font-bold rounded-[10px] leading-none whitespace-nowrap">
+            만료예정 2
+          </span>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </div>
+      <div className="flex-1 overflow-auto">
+        <ul className="divide-y divide-[#e2e8f0]">
+          {data.map((item, idx) => (
+            <li key={idx} className="flex items-center justify-between p-3 hover:bg-[#f8fafc] transition-colors">
+              <div className="flex items-center gap-2 overflow-hidden">
+                <span className="w-[3px] h-[3px] rounded-full bg-[#94a3b8] shrink-0"></span>
+                <span className="text-[13px] text-[#334155] font-medium truncate" title={item.title}>{item.title}</span>
+              </div>
+              <span className={`text-[12px] shrink-0 ml-3 font-medium whitespace-nowrap ${item.isExpiring ? 'text-[#e23a32]' : 'text-[#64748b]'}`}>
+                {item.period}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -421,25 +871,28 @@ function Sidebar({
         {/* Brand / Logo Section */}
         <div className={`h-[60px] flex items-center ${collapsed ? 'justify-center px-0' : 'justify-start px-[16px]'} border-b border-[#c2cfdf] bg-white shrink-0 transition-all duration-300 ease-in-out`}>
           <div className="flex items-center gap-[10px] overflow-hidden cursor-pointer group" title="케어포 중앙">
-            <div className="h-[28px] w-[28px] relative shrink-0 transition-transform duration-300 group-hover:scale-105">
-              <svg className="block size-full" fill="none" viewBox="0 0 26 26">
-                <g>
-                  <path d={topNavSvg.p2ae8b1c0} fill="url(#sidebar_logo_g0)" />
-                  <path clipRule="evenodd" d={topNavSvg.p3696b980} fill="url(#sidebar_logo_g1)" fillRule="evenodd" />
-                  <path d={topNavSvg.p100557f0} fill="url(#sidebar_logo_g2)" />
+            <div className="h-[25px] w-[20px] relative shrink-0 transition-transform duration-300 group-hover:scale-105">
+              <svg className="block size-full" fill="none" viewBox="0 0 20 25">
+                <g id="Frame 1597881711">
+                  <g id="N">
+                    <path d={topNavSvg.p2ae8b1c0} fill="url(#sidebar_logo_g0)" />
+                    <path clipRule="evenodd" d={topNavSvg.p3696b980} fill="url(#sidebar_logo_g1)" fillRule="evenodd" />
+                    <path d={topNavSvg.p100557f0} fill="url(#sidebar_logo_g2)" />
+                  </g>
                 </g>
                 <defs>
-                  <linearGradient id="sidebar_logo_g0" gradientUnits="userSpaceOnUse" x1="2.2" x2="23.8" y1="2.2" y2="23.8">
-                    <stop stopColor="#ef5a27" />
-                    <stop offset="1" stopColor="#f97316" />
+                  <linearGradient id="sidebar_logo_g0" gradientUnits="userSpaceOnUse" x1="10" x2="10" y1="0" y2="25">
+                    <stop stopColor="#E83D3C" />
+                    <stop offset="0.524038" stopColor="#F76501" />
+                    <stop offset="0.850962" stopColor="#F8CD53" />
                   </linearGradient>
-                  <linearGradient id="sidebar_logo_g1" gradientUnits="userSpaceOnUse" x1="5" x2="21" y1="5" y2="21">
-                    <stop stopColor="#ffffff" />
-                    <stop offset="1" stopColor="#fff7ed" />
+                  <linearGradient id="sidebar_logo_g1" gradientUnits="userSpaceOnUse" x1="10" x2="10" y1="0" y2="25">
+                    <stop stopColor="#197E21" />
+                    <stop offset="1" stopColor="#9BCB13" />
                   </linearGradient>
-                  <linearGradient id="sidebar_logo_g2" gradientUnits="userSpaceOnUse" x1="10" x2="16" y1="10" y2="16">
-                    <stop stopColor="#ef5a27" />
-                    <stop offset="1" stopColor="#ea580c" />
+                  <linearGradient id="sidebar_logo_g2" gradientUnits="userSpaceOnUse" x1="10" x2="10" y1="0" y2="25">
+                    <stop stopColor="#0093A9" />
+                    <stop offset="0.432692" stopColor="#4AB6DC" />
                   </linearGradient>
                 </defs>
               </svg>
@@ -798,7 +1251,7 @@ function GNB() {
               <span className="text-[12px] font-bold text-[#0e1225] leading-tight flex items-center gap-1">
                 {userInfo.name} <span className="text-[10px] text-[#64748b] font-normal">{userInfo.role}</span>
               </span>
-              <span className="text-[11px] text-[#8a9cb4] leading-tight">{userInfo.org}</span>
+
             </div>
             <svg
               width="10"
@@ -1416,11 +1869,9 @@ function HistoryLink({ label, onClick }: { label: string; onClick: () => void })
 
 // ─── Detail Panel Types & Constants ──────────────────────────────────────────
 
-type DetailTab = '기본정보' | '보호자정보'
-type SubTab = '기타비용' | '급여일정' | '청구내역' | '이용확인서'
+type SubTab = '보호자정보' | '기타비용' | '급여일정' | '청구내역' | '이용확인서'
 
-const DETAIL_TABS: DetailTab[] = ['기본정보', '보호자정보']
-const SUB_TABS: SubTab[] = ['기타비용', '급여일정', '청구내역', '이용확인서']
+const SUB_TABS: SubTab[] = ['보호자정보', '기타비용', '급여일정', '청구내역', '이용확인서']
 
 type SmsTarget = {
   id: string
@@ -1883,8 +2334,7 @@ function SmsManagementModal({
 }
 
 function DetailPanel({ person, onClose }: { person: Beneficiary; onClose: () => void }) {
-  const [detailTab, setDetailTab] = useState<DetailTab>('기본정보')
-  const [subTab, setSubTab] = useState<SubTab>('기타비용')
+  const [subTab, setSubTab] = useState<SubTab>('보호자정보')
   const [collapsed, setCollapsed] = useState(false)
   const [isWideView, setIsWideView] = useState(false)
   const [diagnosis, setDiagnosis] = useState(person.diagnosis)
@@ -1946,437 +2396,252 @@ function DetailPanel({ person, onClose }: { person: Beneficiary; onClose: () => 
   }
 
   return (
-    <div className="flex flex-col h-full p-2.5 gap-2">
-      {/* 1. 상단 메인 탭 & 넓게보기 토글 & 패널 닫기 */}
-      <div className="flex items-center justify-between border-b border-[#c2cfdf] shrink-0 pb-1.5">
-        <div className="flex items-center gap-1.5">
-          {DETAIL_TABS.map(t => (
-            <button
-              key={t}
-              onClick={() => setDetailTab(t)}
-              className={`px-3.5 py-2 text-[15.5px] font-bold tracking-tight transition-colors rounded-[8px] cursor-pointer ${detailTab === t
-                ? 'text-[#2a3461] bg-[#eef3fa]'
-                : 'text-[#8a9cb4] hover:text-[#2a3461] hover:bg-[#f4f7fc]'
+    <div className="flex flex-col h-full gap-2 overflow-hidden">
+      {/* ─── 섹션 1: 수급자 기본정보 ─── */}
+      <div className="flex flex-col bg-white border border-[#c2cfdf] shrink-0 shadow-2xs">
+        {/* 섹션 1 헤더 바 */}
+        <div className="p-3 flex items-center justify-between border-b border-[#c2cfdf] bg-[#fafbfc] flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+
+
+            {/* 성별 기호 뱃지 박스 */}
+            <span className={`w-[22px] h-[22px] rounded-[6px] flex items-center justify-center font-bold text-[13px] leading-none shrink-0 ${person.gender === '여'
+              ? 'bg-[#fdf2f8] text-[#e11d48]'
+              : 'bg-[#eff6ff] text-[#2563eb]'
+              }`}>
+              {person.gender === '여' ? '♀' : '♂'}
+            </span>
+            {/* 수급자 성명 */}
+            <span className="text-[16px] font-bold text-[#0e1225] leading-none tracking-tight ml-0.5">
+              {person.name}
+            </span>
+            {/* 생년월일 (나이) */}
+            <span className="text-[13.5px] text-[#64748b] font-normal leading-none mr-1">
+              {person.dob} ({age}세)
+            </span>
+            {/* 수급 등급 뱃지 */}
+            <span className="h-[24px] px-2.5 inline-flex items-center justify-center text-[12px] font-medium bg-[#eef2f8] text-[#334155] rounded-[4px] leading-none whitespace-nowrap">
+              {person.grade}등급
+            </span>
+            {/* 계약 상태 뱃지 */}
+            <span className="h-[24px] px-2.5 inline-flex items-center justify-center text-[12px] font-medium bg-[#e8f8ed] text-[#1c9640] border border-[#a7f3d0] rounded-[4px] leading-none whitespace-nowrap">
+              {person.contractStatus}
+            </span>
+            {/* 급여제공한도 뱃지 */}
+            <span className="h-[24px] px-2.5 inline-flex items-center justify-center text-[12px] bg-[#dff8fb] text-[#0891b2] border border-[#a5f3fc] rounded-[4px] leading-none whitespace-nowrap gap-1">
+              <span className="font-normal">한도:</span>
+              <strong className="font-bold">{formatCurrency(monthlyLimit)}</strong>
+            </span>
+
+            {/* 접기/펼치기 토글 버튼 */}
+            {/* <button
+              onClick={() => setIsWideView(w => !w)}
+              className={`h-[24px] px-2 rounded-[4px] border text-[11.5px] font-medium transition-all flex items-center gap-1 cursor-pointer ml-1 ${isWideView
+                ? 'border-[#fcd8cc] bg-[#fff5f0] text-[#ef5a27] hover:bg-[#ffe8de] hover:border-[#ef5a27]'
+                : 'border-[#c2cfdf] bg-white text-[#475569] hover:border-[#2a3461] hover:text-[#2a3461] hover:bg-[#eef3fa]'
                 }`}
+              title={isWideView ? '기본정보 펼치기' : '기본정보 접기 (넓게보기)'}
             >
-              {t}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* 상단 탭 우측 넓게보기 토글 버튼 — 상태별 명확한 색상 차별화 */}
-          <button
-            onClick={() => setIsWideView(w => !w)}
-            className={`h-[32px] px-3 rounded-[6px] border text-[13px] font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${isWideView
-              ? 'bg-[#2a3461] text-white border-[#2a3461] hover:bg-[#364275]'
-              : 'bg-[#fff5f0] text-[#ef5a27] border-[#fcd8cc] hover:bg-[#ffe8de] hover:border-[#ef5a27]'
-              }`}
-            title={isWideView ? '기본보기 (수급자 정보 테이블 복원)' : '넓게보기 (수급자 정보 테이블 숨김)'}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              {isWideView ? (
-                <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
-              ) : (
-                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-              )}
-            </svg>
-            <span>{isWideView ? '기본보기' : '넓게보기'}</span>
-          </button>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                {isWideView ? (
+                  <path d="M6 9l6 6 6-6" />
+                ) : (
+                  <path d="M18 15l-6-6-6 6" />
+                )}
+              </svg>
+              <span>{isWideView ? '펼치기' : '접기'}</span>
+            </button> */}
+          </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-[6px] text-[#8a9cb4] hover:text-[#2a3461] hover:bg-[#f4f7fc] transition-colors cursor-pointer"
-            title="상세창 닫기"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. 스크롤 본문 영역 */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto flex flex-col min-h-0 pr-0.5 gap-2.5"
-        onScroll={e => {
-          const top = (e.currentTarget as HTMLDivElement).scrollTop
-          setCollapsed(top > 80)
-        }}
-      >
-        {/* 축소 요약 헤더 (스크롤 시 상단 고정) */}
-        {collapsed && (
-          <div className="sticky top-0 z-20 bg-white border-b border-[#c2cfdf] py-2 px-3 flex items-center justify-between shadow-xs">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-[15px] font-bold text-[#0e1225]">{person.name}</span>
-              <span className="text-[13px] text-[#6d819b] font-medium">{person.dob} ({age}세)</span>
-              <span className={`text-[12px] font-bold px-2 py-0.5 rounded-[6px] border ${GRADE_COLOR[gk] ?? 'bg-[#f4f7fc] text-[#283445]'}`}>{person.grade}등급</span>
-              <span className="text-[12px] bg-[#e8f8ed] text-[#1c9640] border border-[#c6f0d2] px-2 py-0.5 rounded-[6px] font-bold">한도 {formatCurrency(monthlyLimit)}</span>
-              <span className="h-[24px] px-2 inline-flex items-center justify-center text-[12px] bg-[#e8f8ed] text-[#1c9640] border border-[#c6f0d2] rounded-[4px] font-bold leading-none">
-                {person.contractStatus}
-              </span>
-            </div>
+          {/* 우측 액션 버튼 및 패널 닫기 */}
+          <div className="flex items-center gap-1.5">
             <button
-              onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="p-1.5 rounded-[6px] text-[#8a9cb4] hover:text-[#2a3461] hover:bg-[#f4f7fc] cursor-pointer"
+              onClick={() => setSmsModalOpen(true)}
+              className="h-[28px] px-2.5 rounded-[6px] border border-[#c2cfdf] bg-white text-[#2a3461] text-[12.5px] font-semibold hover:border-[#2a3461] hover:bg-[#f4f7fc] transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
             >
-              <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 9L7 4L12 9" /></svg>
+              <svg width="12" height="10" viewBox="0 0 14 11" fill="none">
+                <path d={rightSvg.p1f34af00} stroke="#2a3461" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                <path d={rightSvg.p12c14080} stroke="#2a3461" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              </svg>
+              문자 발송
+            </button>
+            <button
+              onClick={openModal}
+              className="h-[28px] px-2.5 rounded-[6px] bg-[#2a3461] text-white text-[12.5px] font-semibold hover:bg-[#364275] transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <svg width="11" height="11" viewBox="0 0 13 13" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M9 1.5L11.5 4L4.5 11H2V8.5L9 1.5Z" />
+              </svg>
+              정보 수정
+            </button>
+
+            <div className="w-[1px] h-[16px] bg-[#c2cfdf] mx-0.5" />
+
+            <button
+              onClick={onClose}
+              className="p-1 rounded-[6px] text-[#8a9cb4] hover:text-[#2a3461] hover:bg-[#eef3fa] transition-colors cursor-pointer"
+              title="상세창 닫기"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
             </button>
           </div>
-        )}
+        </div>
 
-        {/* 탭 1: 수급자 기본정보 */}
-        {detailTab === '기본정보' && (
-          <div className="flex flex-col border border-[#c2cfdf] bg-white transition-all duration-300">
-            {/* 섹션 헤더 바 — 타이틀, 텍스트, 배지 간 수직 중앙 일직선 완벽 정렬 */}
-            <div className={`bg-[#f4f7fc] px-3.5 py-2.5 flex items-center justify-between flex-wrap gap-2 ${isWideView ? '' : 'border-b border-[#c2cfdf]'}`}>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <span className="text-[14.5px] font-bold text-[#2a3461] inline-flex items-center gap-1.5 leading-none">
-                  <span className="w-[3.5px] h-[14px] bg-[#2a3461] inline-block rounded-[1px] shrink-0" />
-                  수급자 기본정보
-                </span>
-                <span className="text-[13.5px] text-[#334155] font-semibold leading-none inline-flex items-center">
-                  {person.name} ({person.gender}, 만 {age}세)
-                </span>
-                <span className={`h-[24px] px-2 inline-flex items-center justify-center text-[12px] font-bold rounded-[4px] border leading-none whitespace-nowrap ${GRADE_COLOR[gk] ?? 'bg-white'}`}>
-                  {person.grade}등급
-                </span>
-                <span className="h-[24px] px-2 inline-flex items-center justify-center text-[12px] bg-[#e8f8ed] text-[#1c9640] border border-[#c6f0d2] rounded-[4px] font-bold leading-none whitespace-nowrap">
-                  한도: {formatCurrency(monthlyLimit)}
-                </span>
-                <span className="h-[24px] px-2 inline-flex items-center justify-center text-[12px] bg-[#e8f8ed] text-[#1c9640] border border-[#c6f0d2] rounded-[4px] font-bold leading-none whitespace-nowrap">
-                  {person.contractStatus}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setSmsModalOpen(true)}
-                  className="h-[32px] px-3 rounded-[8px] border border-[#c2cfdf] bg-white text-[#2a3461] text-[13px] font-semibold hover:border-[#2a3461] hover:bg-[#f4f7fc] transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <svg width="13" height="11" viewBox="0 0 14 11" fill="none">
-                    <path d={rightSvg.p1f34af00} stroke="#2a3461" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                    <path d={rightSvg.p12c14080} stroke="#2a3461" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                  </svg>
-                  문자 발송
-                </button>
-                <button
-                  onClick={openModal}
-                  className="h-[32px] px-3 rounded-[8px] bg-[#2a3461] text-white text-[13px] font-semibold hover:bg-[#364275] transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
-                    <path d="M9 1.5L11.5 4L4.5 11H2V8.5L9 1.5Z" />
-                  </svg>
-                  정보 수정
-                </button>
+        {/* 수급자 기본정보 상세 영역 (접기/펼치기 제어) */}
+        {!isWideView && (
+          <div className="flex flex-col md:flex-row items-stretch">
+            {/* 사진 영역 */}
+            <div className="w-[104px] shrink-0 border-b md:border-b-0 md:border-r border-[#c2cfdf] p-2 flex flex-col items-center justify-center gap-1.5 bg-[#fafbfc]">
+              <div
+                onClick={() => setPhotoModalOpen(true)}
+                className="w-[88px] h-[102px] border border-[#c2cfdf] rounded-[8px] bg-[#eef3fa] cursor-pointer overflow-hidden group relative flex flex-col items-center justify-center"
+              >
+                {photoUrl ? (
+                  <img src={photoUrl} alt="수급자 사진" className="w-full h-full object-cover" />
+                ) : (
+                  <>
+                    <svg width="34" height="34" viewBox="0 0 44 44" fill="none"><path d={rightSvg.p204ea200} fill="#C2CFDF" /></svg>
+                    <span className="text-[#8a9cb4] text-[10px] font-medium mt-0.5">사진 등록</span>
+                  </>
+                )}
+                <div className="absolute inset-0 bg-black/40 group-hover:opacity-100 opacity-0 transition-opacity flex items-center justify-center">
+                  <span className="text-white text-[10px] font-medium bg-black/60 rounded-[4px] px-1.5 py-0.5">{photoUrl ? '변경' : '등록'}</span>
+                </div>
               </div>
             </div>
 
-            {/* 수급자 정보 테이블 (넓게보기 활성화 시 숨김) */}
-            {!isWideView && (
-              <div className="flex flex-col md:flex-row items-stretch">
-                {/* 사진 영역 */}
-                <div className="w-[104px] shrink-0 border-b md:border-b-0 md:border-r border-[#c2cfdf] p-2 flex flex-col items-center justify-center gap-1.5 bg-[#fafbfc]">
-                  <div
-                    onClick={() => setPhotoModalOpen(true)}
-                    className="w-[88px] h-[102px] border border-[#c2cfdf] rounded-[8px] bg-[#eef3fa] cursor-pointer overflow-hidden group relative flex flex-col items-center justify-center"
-                  >
-                    {photoUrl ? (
-                      <img src={photoUrl} alt="수급자 사진" className="w-full h-full object-cover" />
-                    ) : (
-                      <>
-                        <svg width="34" height="34" viewBox="0 0 44 44" fill="none"><path d={rightSvg.p204ea200} fill="#C2CFDF" /></svg>
-                        <span className="text-[#8a9cb4] text-[10px] font-medium mt-0.5">사진 등록</span>
-                      </>
-                    )}
-                    <div className="absolute inset-0 bg-black/40 group-hover:opacity-100 opacity-0 transition-opacity flex items-center justify-center">
-                      <span className="text-white text-[10px] font-medium bg-black/60 rounded-[4px] px-1.5 py-0.5">{photoUrl ? '변경' : '등록'}</span>
-                    </div>
-                  </div>
-                  <span className="text-[12px] font-bold text-[#2a3461]">{person.name}</span>
+            {/* 격자 테이블 — 3열 구조(한 줄에 3개) 최적화로 세로 높이 최소화 및 가로 활용 극대화 */}
+            <div className="flex-1 text-[13.5px]">
+              {/* Row 1: 수급자명 / 생년월일 / 인정등급 */}
+              <div className="grid grid-cols-1 md:grid-cols-[100px_1fr_100px_1fr_100px_1fr] border-b border-[#c2cfdf]">
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  수급자명
                 </div>
-
-                {/* 격자 테이블 — 타이틀(라벨) 고정폭(120px) 최적화로 가독성 및 데이터 영역 극대화 */}
-                <div className="flex-1 text-[14px]">
-                  {/* Row 1 */}
-                  <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px_1fr] border-b border-[#c2cfdf]">
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      수급자명
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf]">
-                      <strong className="text-[#0e1225] text-[15px] mr-1">{person.name}</strong> ({person.gender}/만{age}세)
-                    </div>
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      생년월일
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center">
-                      <span>{person.dob}</span>
-                      {actualDob && !dobSyncLtc && (
-                        <span className="text-[#64748b] text-[12px] ml-1.5 font-normal">[{actualDob}({actualDobType})]</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Row 2: 인정등급 / 인정번호 */}
-                  <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px_1fr] border-b border-[#c2cfdf]">
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      인정등급
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center justify-between border-b md:border-b-0 md:border-r border-[#c2cfdf]">
-                      <span className="text-[14.5px]"><strong>{person.grade}등급</strong> </span>
-                      <HistoryLink label="이력" onClick={() => setHistoryModal('grade')} />
-                    </div>
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      인정번호
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] font-mono flex items-center text-[13.5px]">
-                      {person.rcgtNo}
-                    </div>
-                  </div>
-
-                  {/* Row 3: 급여개시일 / 급여제공한도 (깔끔한 표시) */}
-                  <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px_1fr] border-b border-[#c2cfdf]">
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      급여개시일
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf]">
-                      <span>{person.benefitStartDate || (person.contractPeriod ? person.contractPeriod.split(' - ')[0] : '2025.03.01')}</span>
-                    </div>
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      급여제공한도
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center">
-                      <strong className="text-[#2a3461] text-[15px]">{formatCurrency(monthlyLimit)}</strong>
-                    </div>
-                  </div>
-
-                  {/* Row 4: 본인부담률 / 연락처 */}
-                  <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px_1fr] border-b border-[#c2cfdf]">
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      본인부담률
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center justify-between border-b md:border-b-0 md:border-r border-[#c2cfdf]">
-                      <span>{person.copayLabel}</span>
-                      <HistoryLink label="이력" onClick={() => setHistoryModal('copay')} />
-                    </div>
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      연락처
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] font-mono flex items-center">
-                      {phoneSyncLtc ? person.phone : phoneCustom}
-                    </div>
-                  </div>
-
-                  {/* Row 5: 계약기간 */}
-                  <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px_1fr] border-b border-[#c2cfdf]">
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      계약기간
-                    </div>
-                    <div className="col-span-1 md:col-span-3 px-3 py-2.5 text-[#0e1225] flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {['방문요양', '방문목욕', '방문간호']
-                          .filter(s => (person.contractHistory ?? []).some(h => h.service === s))
-                          .map(s => {
-                            const latest = [...(person.contractHistory ?? [])].filter(h => h.service === s).at(-1)
-                            return (
-                              <div key={s} className="flex items-center gap-1.5 border border-[#c2cfdf] rounded-[6px] px-2 py-0.5 bg-[#f8fafc]">
-                                <span className={`text-[11px] px-1.5 py-0.2 rounded-[4px] font-semibold ${SERVICE_COLORS[s] ?? ''}`}>{SERVICE_SHORT[s]}</span>
-                                <span className="text-[13px] text-[#334155]">{latest?.from} ~ {latest?.to}</span>
-                              </div>
-                            )
-                          })}
-                      </div>
-                      <HistoryLink label="계약이력" onClick={() => setHistoryModal('contract')} />
-                    </div>
-                  </div>
-
-                  {/* Row 6: 주소 / 담당 복지사 */}
-                  <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px_1fr] border-b border-[#c2cfdf]">
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      주소 (위치정보)
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center truncate border-b md:border-b-0 md:border-r border-[#c2cfdf]">
-                      <span className="truncate">{addressSyncLtc ? person.address : addressCustom}</span>
-                    </div>
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      담당 복지사
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center justify-between">
-                      <span className="truncate font-medium">
-                        {selectedWorkerIds.length > 0
-                          ? STAFF_LIST.filter(s => selectedWorkerIds.includes(s.id)).map(s => s.name).join(', ')
-                          : person.workers.map(w => w.name).join(', ')}
-                      </span>
-                      <button
-                        onClick={() => setWelfareModalOpen(true)}
-                        className="ml-2 bg-white h-[24px] px-2 rounded-[6px] border border-[#c2cfdf] text-[#2a3461] text-[12px] font-medium hover:border-[#2a3461] hover:bg-[#f4f7fc] transition-colors cursor-pointer shrink-0"
-                      >
-                        배정
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Row 7: 주요질환 / 특이사항 */}
-                  <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_120px_1fr]">
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      주요질환
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf]">
-                      {diagnosis || '-'}
-                    </div>
-                    <div className="bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
-                      특이사항 (비고)
-                    </div>
-                    <div className="px-3 py-2.5 text-[#0e1225] flex items-center truncate">
-                      <span className="truncate">{memo || '-'}</span>
-                    </div>
-                  </div>
+                <div className="px-3 py-2 text-[#0e1225] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf]">
+                  <strong className="text-[#0e1225] text-[14.5px] mr-1">{person.name}</strong> ({person.gender}/만{age}세)
+                </div>
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  생년월일
+                </div>
+                <div className="px-3 py-2 text-[#0e1225] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf]">
+                  <span>{person.dob}</span>
+                  {actualDob && !dobSyncLtc && (
+                    <span className="text-[#64748b] text-[11.5px] ml-1.5 font-normal">[{actualDob}({actualDobType})]</span>
+                  )}
+                </div>
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  인정등급
+                </div>
+                <div className="px-3 py-2 text-[#0e1225] flex items-center justify-between">
+                  <span className="text-[14px]"><strong>{person.grade}등급</strong></span>
+                  <HistoryLink label="이력" onClick={() => setHistoryModal('grade')} />
                 </div>
               </div>
-            )}
-          </div>
-        )}
 
-        {/* 탭 2: 보호자 정보 (이미지 기반 고밀도 복수 보호자 테이블) */}
-        {detailTab === '보호자정보' && (() => {
-          const primaryGuardian = guardians.find(g => g.isPrimary) || guardians[0]
-          return (
-            <div className="flex flex-col border border-[#c2cfdf] bg-white transition-all duration-300">
-              {/* 섹션 헤더 바 — 타이틀, 텍스트, 주보호자 칩, 등록 배지 간 수직 중앙 일직선 완벽 정렬 */}
-              <div className={`bg-[#f4f7fc] px-3.5 py-2.5 flex items-center justify-between flex-wrap gap-2 ${isWideView ? '' : 'border-b border-[#c2cfdf]'}`}>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="text-[14.5px] font-bold text-[#2a3461] inline-flex items-center gap-1.5 leading-none">
-                    <span className="w-[3.5px] h-[14px] bg-[#2a3461] inline-block rounded-[1px] shrink-0" />
-                    보호자 정보
-                  </span>
-                  <span className="text-[13.5px] text-[#334155] font-semibold leading-none inline-flex items-center">
-                    {person.name} ({person.gender}, 만 {age}세)
-                  </span>
-                  {primaryGuardian && (
-                    <span className="h-[24px] px-2.5 inline-flex items-center justify-center text-[12.5px] font-semibold text-[#0e1225] bg-[#eef3fa] rounded-[4px] border border-[#c2cfdf] leading-none whitespace-nowrap">
-                      주보호자: {primaryGuardian.name} ({primaryGuardian.relation || '관계 미지정'}) {primaryGuardian.phone ? `· ${primaryGuardian.phone}` : ''}
-                    </span>
-                  )}
-                  <span className="h-[24px] px-2 inline-flex items-center justify-center text-[12px] bg-[#e8f8ed] text-[#1c9640] border border-[#c6f0d2] rounded-[4px] font-bold leading-none whitespace-nowrap">
-                    등록 {guardians.length}명
-                  </span>
+              {/* Row 2: 인정번호 / 본인부담률 / 연락처 */}
+              <div className="grid grid-cols-1 md:grid-cols-[100px_1fr_100px_1fr_100px_1fr] border-b border-[#c2cfdf]">
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  인정번호
                 </div>
+                <div className="px-3 py-2 text-[#0e1225] font-mono flex items-center text-[13px] border-b md:border-b-0 md:border-r border-[#c2cfdf]">
+                  {person.rcgtNo}
+                </div>
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  본인부담률
+                </div>
+                <div className="px-3 py-2 text-[#0e1225] flex items-center justify-between border-b md:border-b-0 md:border-r border-[#c2cfdf]">
+                  <span>{person.copayLabel}</span>
+                  <HistoryLink label="이력" onClick={() => setHistoryModal('copay')} />
+                </div>
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  연락처
+                </div>
+                <div className="px-3 py-2 text-[#0e1225] font-mono flex items-center">
+                  {phoneSyncLtc ? person.phone : phoneCustom}
+                </div>
+              </div>
 
-                <div className="flex items-center gap-2">
+              {/* Row 3: 계약기간 (단독 1줄 전체 너비) */}
+              <div className="grid grid-cols-1 md:grid-cols-[100px_1fr] border-b border-[#c2cfdf]">
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  계약기간
+                </div>
+                <div className="px-3 py-2 text-[#0e1225] flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {['방문요양', '방문목욕', '방문간호']
+                      .filter(s => (person.contractHistory ?? []).some(h => h.service === s))
+                      .map(s => {
+                        const latest = [...(person.contractHistory ?? [])].filter(h => h.service === s).at(-1)
+                        return (
+                          <div key={s} className="flex items-center gap-1.5 border border-[#c2cfdf] rounded-[6px] px-2 py-0.5 bg-[#f8fafc]">
+                            <span className={`text-[11px] px-1.5 py-0.2 rounded-[4px] font-semibold ${SERVICE_COLORS[s] ?? ''}`}>{SERVICE_SHORT[s]}</span>
+                            <span className="text-[13px] text-[#334155]">{latest?.from} ~ {latest?.to}</span>
+                          </div>
+                        )
+                      })}
+                  </div>
+                  <HistoryLink label="이력" onClick={() => setHistoryModal('contract')} />
+                </div>
+              </div>
+
+              {/* Row 4: 담당 복지사 / 주요질환 / 주소 (위치정보) */}
+              <div className="grid grid-cols-1 md:grid-cols-[100px_1fr_100px_1fr_100px_1fr] border-b border-[#c2cfdf]">
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  담당 복지사
+                </div>
+                <div className="px-3 py-2 text-[#0e1225] flex items-center justify-between border-b md:border-b-0 md:border-r border-[#c2cfdf]">
+                  <span className="truncate font-medium">
+                    {selectedWorkerIds.length > 0
+                      ? STAFF_LIST.filter(s => selectedWorkerIds.includes(s.id)).map(s => s.name).join(', ')
+                      : person.workers.map(w => w.name).join(', ')}
+                  </span>
                   <button
-                    onClick={() => setGuardianModalOpen(true)}
-                    className="h-[32px] px-3 rounded-[8px] bg-[#2a3461] text-white text-[13px] font-semibold hover:bg-[#364275] transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    onClick={() => setWelfareModalOpen(true)}
+                    className="ml-1.5 bg-white h-[22px] px-1.5 rounded-[4px] border border-[#c2cfdf] text-[#2a3461] text-[11.5px] font-medium hover:border-[#2a3461] hover:bg-[#f4f7fc] transition-colors cursor-pointer shrink-0"
                   >
-                    <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
-                      <path d="M9 1.5L11.5 4L4.5 11H2V8.5L9 1.5Z" />
-                    </svg>
-                    보호자 등록/수정
+                    배정
                   </button>
                 </div>
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  주요질환
+                </div>
+                <div className="px-3 py-2 text-[#0e1225] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] truncate">
+                  <span className="truncate">{diagnosis || '-'}</span>
+                </div>
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  주소
+                </div>
+                <div className="px-3 py-2 text-[#0e1225] flex items-center truncate">
+                  <span className="truncate">{addressSyncLtc ? person.address : addressCustom}</span>
+                </div>
               </div>
 
-              {/* 보호자 정보 테이블 (넓게보기 시 숨김 — 기본정보와 동일 동작) */}
-              {!isWideView && (
-                <div className="text-[13.5px]">
-                  {guardians.length === 0 ? (
-                    <div className="p-8 text-center text-[#8a9cb4] flex flex-col items-center gap-2">
-                      <span className="text-[14.5px]">등록된 보호자가 없습니다.</span>
-                      <button
-                        onClick={() => setGuardianModalOpen(true)}
-                        className="h-[34px] px-3.5 rounded-[6px] bg-[#2a3461] text-white text-[13px] font-semibold cursor-pointer"
-                      >
-                        + 보호자 등록하기
-                      </button>
-                    </div>
-                  ) : (
-                    guardians.map((g, idx) => (
-                      <div
-                        key={g.id || idx}
-                        className={`flex flex-col md:flex-row items-stretch ${idx !== guardians.length - 1 ? 'border-b border-[#c2cfdf]' : ''
-                          }`}
-                      >
-                        {/* 좌측: 이름 + 관계 */}
-                        <div className="w-full md:w-[150px] shrink-0 bg-[#f4f7fc] border-b md:border-b-0 md:border-r border-[#c2cfdf] p-4 flex flex-col items-center justify-center gap-1">
-                          <span className="text-[16px] font-['Pretendard:Bold',sans-serif] text-[#0e1225]">
-                            {g.name}
-                          </span>
-                          <span className="text-[13.5px] text-[#475569] font-['Pretendard:Medium',sans-serif]">
-                            ({g.relation || '관계 미지정'})
-                          </span>
-                        </div>
-
-                        {/* 우측: 연락처 + 주소 */}
-                        <div className="flex-1 flex flex-col">
-                          {/* Row 1: 연락처 */}
-                          <div className="flex items-stretch border-b border-[#c2cfdf] min-h-[46px]">
-                            <div className="w-[90px] shrink-0 bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-r border-[#c2cfdf] text-[13.5px]">
-                              연락처
-                            </div>
-                            <div className="flex-1 px-4 py-2.5 text-[#1e293b] flex items-center gap-2.5 flex-wrap">
-                              <span className="font-mono text-[14.5px] font-bold text-[#0e1225] mr-1">
-                                {g.phone || '-'}
-                              </span>
-                              {/* 급여 배지 */}
-                              <span
-                                className={`border px-2 py-0.5 rounded-[4px] text-[12px] font-bold ${g.salarySync
-                                  ? 'border-[#ef5a27] text-[#ef5a27] bg-[#fff5f0]'
-                                  : 'border-[#d9e2ef] text-[#94a3b8] bg-white'
-                                  }`}
-                              >
-                                급여
-                              </span>
-                              {/* 청구 배지 */}
-                              <span
-                                className={`border px-2 py-0.5 rounded-[4px] text-[12px] font-bold ${g.billingSync
-                                  ? 'border-[#ef5a27] text-[#ef5a27] bg-[#fff5f0]'
-                                  : 'border-[#d9e2ef] text-[#94a3b8] bg-white'
-                                  }`}
-                              >
-                                청구
-                              </span>
-                              {/* 공지 배지 */}
-                              <span
-                                className={`border px-2 py-0.5 rounded-[4px] text-[12px] font-bold ${g.noticeSync
-                                  ? 'border-[#ef5a27] text-[#ef5a27] bg-[#fff5f0]'
-                                  : 'border-[#d9e2ef] text-[#94a3b8] bg-white'
-                                  }`}
-                              >
-                                공지
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Row 2: 주소 */}
-                          <div className="flex items-stretch min-h-[46px]">
-                            <div className="w-[90px] shrink-0 bg-[#f4f7fc] px-3 py-2.5 font-semibold text-[#334155] flex items-center border-r border-[#c2cfdf] text-[13.5px]">
-                              주소
-                            </div>
-                            <div className="flex-1 px-4 py-2.5 text-[#1e293b] leading-relaxed flex items-center">
-                              <span className="text-[14px] text-[#0e1225]">
-                                {g.zipCode ? `${g.zipCode} ` : ''}
-                                {g.address} {g.addressDetail}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
+              {/* Row 5: 특이사항 (비고) */}
+              <div className="grid grid-cols-1 md:grid-cols-[100px_1fr]">
+                <div className="bg-[#f4f7fc] px-3 py-2 font-semibold text-[#334155] flex items-center border-b md:border-b-0 md:border-r border-[#c2cfdf] whitespace-nowrap">
+                  특이사항
                 </div>
-              )}
+                <div className="px-3 py-2 text-[#0e1225] flex items-center truncate">
+                  <span className="truncate">{memo || '-'}</span>
+                </div>
+              </div>
             </div>
-          )
-        })()}
+          </div>
+        )}
+      </div>
 
-        {/* 섹션 3: 서브 탭 & 세부 업무 내역 */}
-        <div className="flex flex-col border border-[#c2cfdf] bg-white flex-1 min-h-[220px]">
-          {/* 서브 탭 바 */}
-          <div className="bg-[#f4f7fc] border-b border-[#c2cfdf] flex items-center overflow-x-auto">
+      {/* ─── 섹션 2: 상세 업무 및 이력 관리 ─── */}
+      <div className="flex flex-col bg-white border border-[#c2cfdf] flex-1 min-h-0 overflow-hidden shadow-2xs">
+        {/* 서브 탭 바 */}
+        <div className="bg-[#f4f7fc] border-b border-[#c2cfdf] flex items-center justify-between shrink-0 overflow-x-auto">
+          <div className="flex items-center overflow-x-auto">
             {SUB_TABS.map(t => (
               <button
                 key={t}
                 onClick={() => setSubTab(t)}
-                className={`px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap border-r border-[#c2cfdf] transition-colors cursor-pointer ${subTab === t
+                className={`px-4 py-2.5 text-[13.5px] font-semibold whitespace-nowrap border-r border-[#c2cfdf] transition-colors cursor-pointer ${subTab === t
                   ? 'bg-white text-[#ef5a27] font-bold border-b-2 border-b-[#ef5a27]'
                   : 'text-[#334155] hover:bg-[#eef2f8]'
                   }`}
@@ -2385,66 +2650,196 @@ function DetailPanel({ person, onClose }: { person: Beneficiary; onClose: () => 
               </button>
             ))}
           </div>
+        </div>
 
-          {/* 서브 탭 컨텐츠 */}
-          <div className="p-3 flex-1 flex flex-col">
-            {subTab === '기타비용' && (
+        {/* 서브 탭 컨텐츠 (스크롤 가능) */}
+        <div className="p-3 flex-1 overflow-y-auto flex flex-col min-h-0">
+          {/* 서브 탭 1: 보호자 정보 (기타비용 탭 스타일 준용 표준 그리드 테이블) */}
+          {subTab === '보호자정보' && (() => {
+            const primaryGuardian = guardians.find(g => g.isPrimary) || guardians[0]
+            return (
               <div className="flex flex-col gap-2.5 flex-1">
                 {/* 상단 컨트롤 */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[14.5px] font-bold text-[#0e1225]">기타비용 발생내역</span>
-                    <button className="bg-white border border-[#c2cfdf] rounded-[6px] px-3 py-1 text-[#334155] text-[13px] font-medium hover:border-[#2a3461] cursor-pointer">2026년</button>
-                    <button className="bg-white border border-[#c2cfdf] rounded-[6px] px-3 py-1 text-[#334155] text-[13px] font-medium hover:border-[#2a3461] cursor-pointer">1월</button>
-                    <button className="bg-[#fff4db] rounded-[6px] px-3 py-1 text-[#ef5a27] text-[13px] font-bold hover:bg-[#ffe8a0] cursor-pointer">당월</button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[14.5px] font-bold text-[#0e1225]">보호자 정보</span>
+                    {primaryGuardian && (
+                      <span className="h-[24px] px-2.5 inline-flex items-center justify-center text-[12.5px] font-semibold text-[#0e1225] bg-[#eef3fa] rounded-[4px] border border-[#c2cfdf] leading-none whitespace-nowrap">
+                        주보호자: {primaryGuardian.name} ({primaryGuardian.relation || '관계 미지정'}) {primaryGuardian.phone ? `· ${primaryGuardian.phone}` : ''}
+                      </span>
+                    )}
+                    <span className="h-[24px] px-2 inline-flex items-center justify-center text-[12px] bg-[#e8f8ed] text-[#1c9640] border border-[#c6f0d2] rounded-[4px] font-bold leading-none whitespace-nowrap">
+                      등록 {guardians.length}명
+                    </span>
                   </div>
-                  <button className="h-[32px] px-3 rounded-[8px] bg-[#2a3461] text-white text-[13px] font-semibold hover:bg-[#364275] flex items-center gap-1.5 shadow-xs cursor-pointer">
-                    <svg width="11" height="11" viewBox="0 0 13 13" fill="none"><path d={rightSvg.p3873da80} stroke="white" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                    기타비용 신규등록
+                  <button
+                    onClick={() => setGuardianModalOpen(true)}
+                    className="h-[32px] px-3 rounded-[8px] bg-[#2a3461] text-white text-[13px] font-semibold hover:bg-[#364275] flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+                      <path d="M9 1.5L11.5 4L4.5 11H2V8.5L9 1.5Z" />
+                    </svg>
+                    보호자 등록/수정
                   </button>
                 </div>
 
                 {/* 테이블 */}
                 <div className="overflow-x-auto border border-[#c2cfdf]">
-                  <table className="w-full border-collapse text-[13px]" style={{ minWidth: 620 }}>
+                  <table className="w-full border-collapse text-[13px]" style={{ minWidth: 640 }}>
                     <thead>
                       <tr className="bg-[#f4f7fc] border-b border-[#c2cfdf] text-[#334155] font-bold">
                         {[
-                          { label: '발생일', w: 95 },
-                          { label: '비용처리자', w: 90 },
-                          { label: '비용항목', w: 100 },
-                          { label: '금액', w: 90 },
-                          { label: '비고', w: undefined },
+                          { label: '구분', w: 80 },
+                          { label: '보호자명', w: 90 },
+                          { label: '관계', w: 80 },
+                          { label: '연락처', w: 125 },
+                          { label: '동기화/알림설정', w: 140 },
+                          { label: '주소', w: undefined },
                         ].map(col => (
-                          <th key={col.label} className="px-3 py-2 text-left font-bold border-r border-[#c2cfdf] last:border-r-0" style={col.w ? { width: col.w } : undefined}>{col.label}</th>
+                          <th
+                            key={col.label}
+                            className="px-3 py-2 text-left font-bold border-r border-[#c2cfdf] last:border-r-0 whitespace-nowrap"
+                            style={col.w ? { width: col.w } : undefined}
+                          >
+                            {col.label}
+                          </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      <tr>
-                        <td colSpan={5} className="text-center py-6 text-[#8a9cb4]">등록된 기타비용 내역이 없습니다.</td>
-                      </tr>
+                      {guardians.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="text-center py-8 text-[#8a9cb4]">
+                            등록된 보호자가 없습니다.
+                          </td>
+                        </tr>
+                      ) : (
+                        guardians.map((g, idx) => (
+                          <tr
+                            key={g.id || idx}
+                            className="border-b border-[#c2cfdf] last:border-b-0 hover:bg-[#f8fafc] transition-colors"
+                          >
+                            {/* 구분 */}
+                            <td className="px-3 py-2.5 border-r border-[#c2cfdf] whitespace-nowrap">
+                              {g.isPrimary ? (
+                                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-[4px] bg-[#fff5f0] text-[#ef5a27] border border-[#fcd8cc]">
+                                  주보호자
+                                </span>
+                              ) : (
+                                <span className="text-[12px] text-[#64748b]">일반</span>
+                              )}
+                            </td>
+                            {/* 보호자명 */}
+                            <td className="px-3 py-2.5 font-bold text-[#0e1225] border-r border-[#c2cfdf] whitespace-nowrap">
+                              {g.name}
+                            </td>
+                            {/* 관계 */}
+                            <td className="px-3 py-2.5 text-[#475569] border-r border-[#c2cfdf] whitespace-nowrap">
+                              {g.relation || '미지정'}
+                            </td>
+                            {/* 연락처 */}
+                            <td className="px-3 py-2.5 font-mono text-[#0e1225] font-semibold border-r border-[#c2cfdf] whitespace-nowrap">
+                              {g.phone || '-'}
+                            </td>
+                            {/* 동기화/알림설정 배지 */}
+                            <td className="px-3 py-2.5 border-r border-[#c2cfdf] whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                <span
+                                  className={`border px-1.5 py-0.5 rounded-[4px] text-[11px] font-bold ${g.salarySync
+                                    ? 'border-[#ef5a27] text-[#ef5a27] bg-[#fff5f0]'
+                                    : 'border-[#d9e2ef] text-[#94a3b8] bg-white'
+                                    }`}
+                                >
+                                  급여
+                                </span>
+                                <span
+                                  className={`border px-1.5 py-0.5 rounded-[4px] text-[11px] font-bold ${g.billingSync
+                                    ? 'border-[#ef5a27] text-[#ef5a27] bg-[#fff5f0]'
+                                    : 'border-[#d9e2ef] text-[#94a3b8] bg-white'
+                                    }`}
+                                >
+                                  청구
+                                </span>
+                                <span
+                                  className={`border px-1.5 py-0.5 rounded-[4px] text-[11px] font-bold ${g.noticeSync
+                                    ? 'border-[#ef5a27] text-[#ef5a27] bg-[#fff5f0]'
+                                    : 'border-[#d9e2ef] text-[#94a3b8] bg-white'
+                                    }`}
+                                >
+                                  공지
+                                </span>
+                              </div>
+                            </td>
+                            {/* 주소 */}
+                            <td className="px-3 py-2.5 text-[#334155]">
+                              {g.zipCode ? `[${g.zipCode}] ` : ''}
+                              {g.address} {g.addressDetail}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
               </div>
-            )}
+            )
+          })()}
+          {subTab === '기타비용' && (
+            <div className="flex flex-col gap-2.5 flex-1">
+              {/* 상단 컨트롤 */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14.5px] font-bold text-[#0e1225]">기타비용 발생내역</span>
+                  <button className="bg-white border border-[#c2cfdf] rounded-[6px] px-3 py-1 text-[#334155] text-[13px] font-medium hover:border-[#2a3461] cursor-pointer">2026년</button>
+                  <button className="bg-white border border-[#c2cfdf] rounded-[6px] px-3 py-1 text-[#334155] text-[13px] font-medium hover:border-[#2a3461] cursor-pointer">1월</button>
+                  <button className="bg-[#fff4db] rounded-[6px] px-3 py-1 text-[#ef5a27] text-[13px] font-bold hover:bg-[#ffe8a0] cursor-pointer">당월</button>
+                </div>
+                <button className="h-[32px] px-3 rounded-[8px] bg-[#2a3461] text-white text-[13px] font-semibold hover:bg-[#364275] flex items-center gap-1.5 shadow-xs cursor-pointer">
+                  <svg width="11" height="11" viewBox="0 0 13 13" fill="none"><path d={rightSvg.p3873da80} stroke="white" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                  기타비용 신규등록
+                </button>
+              </div>
 
-            {/* 서브 탭: 급여일정 */}
-            {subTab === '급여일정' && (
-              <div className="flex items-center justify-center py-12 text-[#8a9cb4] text-[14px]">급여일정 기능 준비 중입니다.</div>
-            )}
+              {/* 테이블 */}
+              <div className="overflow-x-auto border border-[#c2cfdf]">
+                <table className="w-full border-collapse text-[13px]" style={{ minWidth: 620 }}>
+                  <thead>
+                    <tr className="bg-[#f4f7fc] border-b border-[#c2cfdf] text-[#334155] font-bold">
+                      {[
+                        { label: '발생일', w: 95 },
+                        { label: '비용처리자', w: 90 },
+                        { label: '비용항목', w: 100 },
+                        { label: '금액', w: 90 },
+                        { label: '비고', w: undefined },
+                      ].map(col => (
+                        <th key={col.label} className="px-3 py-2 text-left font-bold border-r border-[#c2cfdf] last:border-r-0" style={col.w ? { width: col.w } : undefined}>{col.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td colSpan={5} className="text-center py-6 text-[#8a9cb4]">등록된 기타비용 내역이 없습니다.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
-            {/* 서브 탭: 청구내역 */}
-            {subTab === '청구내역' && (
-              <div className="flex items-center justify-center py-12 text-[#8a9cb4] text-[14px]">청구내역 기능 준비 중입니다.</div>
-            )}
+          {/* 서브 탭: 급여일정 */}
+          {subTab === '급여일정' && (
+            <div className="flex items-center justify-center py-12 text-[#8a9cb4] text-[14px]">급여일정 기능 준비 중입니다.</div>
+          )}
 
-            {/* 서브 탭: 이용확인서 */}
-            {subTab === '이용확인서' && (
-              <div className="flex items-center justify-center py-12 text-[#8a9cb4] text-[14px]">이용확인서 기능 준비 중입니다.</div>
-            )}
-          </div>
+          {/* 서브 탭: 청구내역 */}
+          {subTab === '청구내역' && (
+            <div className="flex items-center justify-center py-12 text-[#8a9cb4] text-[14px]">청구내역 기능 준비 중입니다.</div>
+          )}
+
+          {/* 서브 탭: 이용확인서 */}
+          {subTab === '이용확인서' && (
+            <div className="flex items-center justify-center py-12 text-[#8a9cb4] text-[14px]">이용확인서 기능 준비 중입니다.</div>
+          )}
         </div>
       </div>
 
@@ -2761,6 +3156,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isWorkspaceMaximized, setIsWorkspaceMaximized] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
+  const [isCalcModalOpen, setIsCalcModalOpen] = useState(false)
 
   const activeFilters = [filterContract, filterGrade, filterName, filterRoom].filter(Boolean).length
   const selected = DATA.find(b => b.id === selectedId) ?? null
@@ -2805,8 +3201,76 @@ export default function App() {
         </div>
 
         {/* Main area */}
-        {activeMenu === '운영·평가' ? (
+        {activeMenu === '대시보드' ? (
+          <div className="flex flex-1 overflow-y-auto p-2 bg-[#eaedf2]">
+            <div className="flex flex-col w-full gap-2">
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 grid-flow-dense">
+
+                {/* 좌측: 일정 리스트 (1칸 차지) */}
+                <ScheduleListWidget className="flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] lg:col-span-1 h-[428px]" />
+
+                {/* 우측: 간편계산기 + 일일 방문일정 (상하 배치, 2칸 차지) */}
+                <div className="flex flex-col gap-2 lg:col-span-2">
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* 1. 배상책임보험 */}
+                    <LiabilityInsuranceWidget className="flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-[200px]" />
+
+                    {/* 2. 재가급여 간편계산기 (위젯 형태) */}
+                    <div className="flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-[200px]">
+                      <div className="p-3 flex items-center justify-between border-b border-[#c2cfdf] bg-[#fafbfc]">
+                        <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none shrink-0">
+                          <span className="w-[4px] h-[16px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
+                          재가급여 간편계산기
+                        </h2>
+                      </div>
+
+                      <div className="flex-1 px-4 py-3 flex flex-col justify-center gap-4 bg-white">
+                        <p className="text-[12.5px] text-[#475569] leading-snug break-keep text-center mt-2">
+                          장기요양등급과 본인부담률을 기준으로 <br /><strong className="text-[#0e1225]">예상 급여 총액 및 본인부담금</strong>을 시뮬레이션 합니다.
+                        </p>
+                        <button
+                          onClick={() => setIsCalcModalOpen(true)}
+                          className="w-full h-[36px] shrink-0 flex items-center justify-center gap-1.5 rounded-[6px] bg-[#2a3461] text-[13px] font-semibold text-white hover:bg-[#364275] transition-colors shadow-xs cursor-pointer mb-2"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                            <rect x="8" y="8" width="8" height="2"></rect>
+                            <line x1="8" y1="13" x2="8.01" y2="13"></line>
+                            <line x1="12" y1="13" x2="12.01" y2="13"></line>
+                            <line x1="16" y1="13" x2="16.01" y2="13"></line>
+                            <line x1="8" y1="17" x2="8.01" y2="17"></line>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                            <line x1="16" y1="17" x2="16.01" y2="17"></line>
+                          </svg>
+                          간편계산기 실행
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. 일일 방문일정 */}
+                  <DailyVisitScheduleWidget className="flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-[220px]" />
+                </div>
+
+                {/* 5. 공지사항 / 알림 */}
+
+
+                {/* 3. 수급자 종합 현황 통계 - 좌측 */}
+                <BeneficiaryStatsWidget data={DATA} className="flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] lg:col-span-2 h-[408px]" />
+
+                {/* 6. 인정만료 예정 수급자 - 우측 */}
+                <CertExpirationWidget data={DATA} className="flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] lg:col-span-1 h-[408px]" />
+
+              </div>
+
+            </div>
+          </div>
+        ) : activeMenu === '운영·평가' ? (
           <EvaluationManualPage onBackToBeneficiaries={() => setActiveMenu('수급자 관리')} />
+        ) : activeMenu === '종사자 관리' ? (
+          <EmployeeManagementPage />
         ) : (
           <div className="flex flex-1 overflow-hidden p-2 gap-2">
 
@@ -2814,8 +3278,8 @@ export default function App() {
             <div
               className="flex flex-col bg-white overflow-hidden shrink-0 border border-[#c2cfdf] transition-all duration-300 ease-in-out"
               style={{
-                width: selected ? '38%' : '100%',
-                minWidth: selected ? '350px' : 'auto',
+                width: selected ? '30%' : '100%',
+                minWidth: selected ? '300px' : 'auto',
               }}
             >
               {/* List header */}
@@ -2823,22 +3287,24 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none">
-                      <span className="w-[3.5px] h-[15px] bg-[#ef5a27] inline-block rounded-[1px] shrink-0" />
+                      <span className="w-[4px] h-[16px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
                       수급자 목록
                     </h2>
-                    <span className="h-[22px] px-2 inline-flex items-center justify-center bg-[#2a3461] text-white text-[12px] font-bold rounded-[4px] leading-none whitespace-nowrap">
+                    <span className="h-[22px] px-2 inline-flex items-center justify-center bg-[#f1f5f9] text-[#64748b] text-[12px] font-bold rounded-[6px] leading-none whitespace-nowrap">
                       {filtered.length}명
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <button className="flex items-center gap-1.5 h-[32px] px-3 rounded-[8px] border border-[#c2cfdf] bg-white text-[13px] font-semibold text-[#2a3461] hover:border-[#2a3461] hover:bg-[#f4f7fc] transition-colors shadow-xs cursor-pointer">
-                      <svg width="12" height="13" viewBox="0 0 11.33 13.333" fill="none" stroke="currentColor" strokeWidth="1.4">
-                        <path d="M2 13.333C1.65 13.333 1.313 13.193 1.063 12.943C0.813 12.693 0.67 12.354 0.67 12V1.333C0.67 0.979 0.813 0.641 1.063 0.391C1.313 0.14 1.651 0 2 0H7.33C7.54 0 7.75 0.041 7.95 0.122C8.14 0.203 8.32 0.322 8.47 0.471L10.86 2.863C11.01 3.012 11.13 3.189 11.21 3.384C11.29 3.579 11.33 3.788 11.33 4V12C11.33 12.354 11.19 12.693 10.94 12.943C10.69 13.193 10.35 13.333 10 13.333H2Z" />
+                    <button className="flex items-center gap-1.5 h-[32px] px-3 rounded-[8px] border border-[#c2cfdf] bg-white text-[13px] font-semibold text-[#334155] hover:border-[#334155] hover:bg-[#f8fafc] transition-colors shadow-xs cursor-pointer">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
                       </svg>
-                      엑셀
+                      엑셀 다운로드
                     </button>
                     <button className="h-[32px] px-3 rounded-[8px] bg-[#2a3461] text-[13px] font-semibold text-white hover:bg-[#364275] transition-colors shadow-xs cursor-pointer">
-                      공단조회
+                      공단 조회
                     </button>
                   </div>
                 </div>
@@ -2847,16 +3313,29 @@ export default function App() {
                 <div className="border border-[#c2cfdf] bg-white rounded-[4px] overflow-hidden">
                   <button
                     onClick={() => setFilterOpen(o => !o)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left bg-[#f4f7fc] border-b border-[#c2cfdf] cursor-pointer"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left bg-white border-b border-[#c2cfdf] cursor-pointer"
                   >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M2 4h12M4 8h8M6 12h4" stroke="#334155" strokeWidth="1.8" strokeLinecap="round" />
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="4" y1="21" x2="4" y2="14" />
+                      <line x1="4" y1="10" x2="4" y2="3" />
+                      <line x1="12" y1="21" x2="12" y2="12" />
+                      <line x1="12" y1="8" x2="12" y2="3" />
+                      <line x1="20" y1="21" x2="20" y2="16" />
+                      <line x1="20" y1="12" x2="20" y2="3" />
+                      <line x1="1" y1="14" x2="7" y2="14" />
+                      <line x1="9" y1="8" x2="15" y2="8" />
+                      <line x1="17" y1="16" x2="23" y2="16" />
                     </svg>
                     <span className="text-[13.5px] font-bold text-[#1e293b]">조회조건</span>
                     {activeFilters > 0 && (
-                      <span className="bg-[#ef5a27] text-white text-[11px] font-bold px-1.5 py-0.2 rounded-[4px]">
-                        {activeFilters}
-                      </span>
+                      <>
+                        <span className="bg-[#ef5a27] text-white text-[11px] font-bold w-[18px] h-[18px] rounded-full flex items-center justify-center leading-none">
+                          {activeFilters}
+                        </span>
+                        <span className="text-[12.5px] text-[#64748b] ml-1">
+                          생활실, 이용상태, 성별 외 3개
+                        </span>
+                      </>
                     )}
                     <div className="flex-1" />
                     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className={`transition-transform text-[#64748b] ${filterOpen ? '' : 'rotate-180'}`}>
@@ -2961,25 +3440,32 @@ export default function App() {
                             </td>
                             <td className="h-[40px] px-2.5 font-bold whitespace-nowrap border-r border-[#c2cfdf] text-[#0e1225] text-[15px]">{b.name}</td>
                             <td className="h-[40px] px-2.5 text-[12.5px] whitespace-nowrap border-r border-[#c2cfdf] text-[#475569]">{b.dob}</td>
-                            <td className="h-[40px] px-2.5 border-r border-[#c2cfdf]">
-                              <span className={`text-[12.5px] font-bold px-2 py-0.5 rounded-[4px] border whitespace-nowrap ${GRADE_COLOR[gk] ?? 'bg-white text-[#283445]'}`}>
-                                {b.grade}등급
+                            <td className="h-[40px] px-1.5 border-r border-[#c2cfdf] text-center">
+                              <span className={`size-[22px] inline-flex items-center justify-center text-[12px] font-bold rounded-[4px] border leading-none mx-auto ${GRADE_COLOR[gk] ?? 'bg-white text-[#283445]'}`}>
+                                {gradeDisplay(b.grade)}
                               </span>
                             </td>
                             <td className="h-[40px] px-2.5 text-[13px] border-r border-[#c2cfdf] text-center font-medium">{b.gender}</td>
-                            <td className="h-[40px] px-2.5 border-r border-[#c2cfdf]">
+                            <td className="h-[40px] px-1.5 border-r border-[#c2cfdf] whitespace-nowrap">
                               {b.contractStatus !== '만료' && (
-                                <div className="flex flex-wrap gap-1">
+                                <div className="flex items-center gap-0.5 flex-nowrap whitespace-nowrap">
                                   {b.services.map(s => {
                                     const short = SERVICE_SHORT[s] ?? s
                                     const cls = SERVICE_COLORS[s] ?? 'bg-neutral-bg-subtle text-neutral-text border-neutral-border'
-                                    return <span key={s} className={`h-[20px] px-1.5 inline-flex items-center justify-center text-[11px] border rounded-[4px] font-bold leading-none ${cls}`}>{short}</span>
+                                    return <span key={s} className={`w-[19px] h-[19px] inline-flex items-center justify-center text-[10.5px] border rounded-[3px] font-bold leading-none shrink-0 ${cls}`}>{short}</span>
                                   })}
                                 </div>
                               )}
                             </td>
-                            <td className="h-[40px] px-1.5 text-center">
-                              <span className="size-[22px] inline-flex items-center justify-center bg-[#0093a9] text-white text-[11px] font-bold rounded-[4px] leading-none mx-auto">희</span>
+                            <td className="h-[40px] px-1 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-0.5 flex-nowrap">
+                                <span className="w-[18px] h-[18px] inline-flex items-center justify-center bg-[#0093a9] text-white text-[10.5px] font-bold rounded-[3px] leading-none shrink-0" title="희망이음 연동">
+                                  희
+                                </span>
+                                <span className="w-[18px] h-[18px] inline-flex items-center justify-center bg-[#2a3461] text-white text-[10.5px] font-bold rounded-[3px] leading-none shrink-0" title="롱텀(공단) 연동">
+                                  롱
+                                </span>
+                              </div>
                             </td>
                           </tr>
                         )
@@ -3005,13 +3491,19 @@ export default function App() {
 
             {/* Detail panel */}
             {selected && (
-              <div className="flex-1 bg-white overflow-hidden flex flex-col min-w-0 border border-[#c2cfdf]">
+              <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 <DetailPanel person={selected} onClose={() => setSelectedId(null)} />
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* 간편계산기 모달 */}
+      {isCalcModalOpen && createPortal(
+        <BenefitCalculatorModal onClose={() => setIsCalcModalOpen(false)} />,
+        document.body
+      )}
     </div>
   )
 }
