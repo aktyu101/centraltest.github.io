@@ -565,6 +565,8 @@ function CareerAuditModal({
 
 // ─── Figma 1:1 재직 이력 등록 / 수정 팝업 모달 (앞/뒤 상태 교차 검증 엔진 탑재) ───────
 
+// ─── Figma 1:1 재직 이력 순번(위치) 선택 전용 모달 ──────────────────────────────
+
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   최초입사일: ['휴직', '퇴직'],
   재직: ['휴직', '퇴직'],
@@ -585,16 +587,150 @@ const STATUS_COLOR_MAP: Record<string, { bg: string; text: string; border: strin
   퇴직: { bg: 'bg-[#f1f5f9]', text: 'text-[#64748b]', border: 'border-[#cbd5e1]' },
 }
 
+function CareerSlotSelectModal({
+  employee,
+  onSelectSlot,
+  onClose,
+}: {
+  employee: Employee
+  onSelectSlot: (slotIndex: number) => void
+  onClose: () => void
+}) {
+  const age = calcAge(employee.dob)
+  const existingList = [...(employee.careerHistory || [])].sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date)
+    return (a.seq ?? 0) - (b.seq ?? 0)
+  })
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity" onClick={onClose} />
+      <div className="relative bg-white rounded-[16px] shadow-[0px_20px_50px_rgba(0,0,0,0.2)] w-full max-w-[620px] flex flex-col overflow-hidden border border-[#c2cfdf] animate-in fade-in zoom-in-95 duration-200">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#c2cfdf] bg-white shrink-0">
+          <div className="flex flex-col">
+            <span className="font-bold text-[17px] text-[#0e1225] tracking-tight">재직 이력 추가 위치(순번) 선택</span>
+            <span className="text-[12px] text-[#64748b]">신규 이력을 삽입할 순번 위치의 [+ 삽입] 버튼을 선택해 주세요.</span>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-[6px] text-[#8a9cb4] hover:text-[#0e1225] cursor-pointer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* 대상자 요약 바 */}
+        <div className="px-5 py-2.5 bg-[#f8fafc] border-b border-[#c2cfdf] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-[22px] h-[22px] rounded-[6px] flex items-center justify-center font-bold text-[13px] leading-none shrink-0 ${
+                employee.gender === '여' ? 'bg-[#fdf2f8] text-[#e11d48]' : 'bg-[#eff6ff] text-[#2563eb]'
+              }`}
+            >
+              {employee.gender === '여' ? '♀' : '♂'}
+            </span>
+            <span className="text-[15px] font-bold text-[#0e1225]">{employee.name}</span>
+            <span className="text-[12.5px] text-[#64748b]">
+              {employee.dob} ({age}세)
+            </span>
+          </div>
+          <span className="px-2.5 py-0.5 bg-[#eef2f8] text-[#334155] rounded-[4px] text-[12px] font-semibold border border-[#d8e2ee]">
+            {employee.job}
+          </span>
+        </div>
+
+        {/* 이력 리스트 및 삽입 슬롯들 */}
+        <div className="p-5 flex flex-col gap-2.5 max-h-[65vh] overflow-y-auto">
+          {existingList.length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-3">
+              <span className="text-[13px] text-[#64748b]">기존 등록된 이력이 없습니다.</span>
+              <button
+                type="button"
+                onClick={() => onSelectSlot(0)}
+                className="h-[38px] px-5 bg-[#2a3461] text-white rounded-[8px] text-[13px] font-bold hover:bg-[#364275] cursor-pointer"
+              >
+                1번 순번으로 신규 등록
+              </button>
+            </div>
+          ) : (
+            existingList.map((item, idx) => {
+              const nextItem = existingList[idx + 1] || null
+              const color = STATUS_COLOR_MAP[item.type] || { bg: 'bg-[#f1f5f9]', text: 'text-[#64748b]', border: 'border-[#cbd5e1]' }
+
+              return (
+                <React.Fragment key={item.id || idx}>
+                  {/* 기존 이력 카드 행 */}
+                  <div className="flex items-center justify-between p-3 rounded-[8px] border border-[#cbd5e1] bg-white shadow-2xs hover:border-[#94a3b8] transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 h-6 rounded-full bg-[#f1f5f9] border border-[#cbd5e1] flex items-center justify-center font-mono font-bold text-[12px] text-[#475569] shrink-0">
+                        {item.seq ?? idx + 1}
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-[4px] text-[12px] font-bold border ${color.bg} ${color.text} ${color.border}`}>
+                        {item.type}
+                      </span>
+                      <span className="font-mono text-[13px] font-semibold text-[#0e1225]">{item.date}</span>
+                      <span className="text-[12.5px] text-[#64748b] truncate max-w-[220px]">{item.reason || '-'}</span>
+                    </div>
+                    {item.syncStatus === '희' && (
+                      <span className="w-[18px] h-[18px] inline-flex items-center justify-center bg-[#0093a9] text-white text-[10px] font-bold rounded-[3px] leading-none shrink-0" title="희망이음 연동">
+                        희
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 삽입 슬롯 버튼 */}
+                  <button
+                    type="button"
+                    onClick={() => onSelectSlot(idx + 1)}
+                    className="group relative my-0.5 py-2 px-3 border-2 border-dashed border-[#93c5fd] bg-[#f8fbff] hover:bg-[#eff6ff] hover:border-[#2563eb] rounded-[8px] flex items-center justify-between transition-all cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-[#2563eb] text-white font-bold text-[12px] flex items-center justify-center shadow-xs">
+                        +
+                      </span>
+                      <span className="font-bold text-[13px] text-[#1e40af] group-hover:text-[#1d4ed8]">
+                        {idx + 2}번 순번으로 여기에 삽입
+                      </span>
+                    </div>
+                    <span className="text-[11.5px] text-[#64748b] font-medium">
+                      범위: {item.date} ~ {nextItem ? nextItem.date : '현재'}
+                    </span>
+                  </button>
+                </React.Fragment>
+              )
+            })
+          )}
+        </div>
+
+        {/* 풋터 */}
+        <div className="px-5 py-3 border-t border-[#c2cfdf] bg-[#fafbfc] flex items-center justify-end shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-[36px] px-4 border border-[#c2cfdf] rounded-[8px] text-[13px] font-semibold text-[#475569] hover:bg-[#f1f5f9] cursor-pointer"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Figma 1:1 재직 이력 등록 / 수정 모달 (스마트 상태 전이 검증 엔진 탑재) ───────
+
 function CareerHistoryEditModal({
   employee,
   initialItem,
-  initialInsertAfterId,
+  slotIndex,
+  onChangeSlotClick,
   onSave,
   onClose,
 }: {
   employee: Employee
   initialItem?: CareerHistoryItem | null
-  initialInsertAfterId?: string | null
+  slotIndex: number
+  onChangeSlotClick?: () => void
   onSave: (date: string, type: string, reason: string) => void
   onClose: () => void
 }) {
@@ -609,31 +745,17 @@ function CareerHistoryEditModal({
       return (a.seq ?? 0) - (b.seq ?? 0)
     })
 
-  // 2. 삽입 위치 슬롯 (0: 1번 이력 뒤, ..., existingList.length: 맨 뒤)
-  const defaultSlotIndex = () => {
-    if (isEdit && initialItem) {
-      // 수정인 경우 기존 위치 기준
-      const idx = existingList.findIndex(h => h.date >= initialItem.date)
-      return idx === -1 ? existingList.length : idx
-    }
-    if (initialInsertAfterId) {
-      const idx = existingList.findIndex(h => h.id === initialInsertAfterId)
-      return idx === -1 ? existingList.length : idx + 1
-    }
-    return existingList.length
-  }
-
-  const [slotIndex, setSlotIndex] = useState<number>(defaultSlotIndex)
-  const [reason, setReason] = useState(initialItem?.reason || '')
+  // 유효 슬롯 인덱스 보정
+  const safeSlot = Math.max(0, Math.min(slotIndex, existingList.length))
 
   // 앞 이력 & 뒤 이력 탐색
-  const prevItem = slotIndex > 0 ? existingList[slotIndex - 1] : existingList[0] || null
-  const nextItem = slotIndex < existingList.length ? existingList[slotIndex] : null
+  const prevItem = safeSlot > 0 ? existingList[safeSlot - 1] : existingList[0] || null
+  const nextItem = safeSlot < existingList.length ? existingList[safeSlot] : null
 
   const prevStatus = prevItem ? prevItem.type : '재직'
   const nextStatus = nextItem ? nextItem.type : null
 
-  // 3. 앞/뒤 상태 교차 검증 (Double-Bounded Transition Logic)
+  // 2. 앞/뒤 상태 교차 검증 (Bi-directional Transition Logic)
   // S_from: prevStatus에서 전이 가능한 상태들
   const fromAllowed = ALLOWED_TRANSITIONS[prevStatus] || ALL_CAREER_STATUSES
   // S_to: 신규 상태 X에서 nextStatus로 전이 가능한 X의 집합
@@ -644,18 +766,25 @@ function CareerHistoryEditModal({
   // 교집합 (S_valid = S_from ∩ S_to)
   const validCandidateStatuses = fromAllowed.filter(st => toAllowed.includes(st))
 
+  // 불가능 사유 판별 함수
+  const getInvalidReason = (st: string) => {
+    const fromOk = fromAllowed.includes(st)
+    const toOk = toAllowed.includes(st)
+    if (!fromOk && !toOk) return `앞(${prevStatus}) 및 뒤(${nextStatus}) 상태 모두 전이 불가`
+    if (!fromOk) return `앞선 '${prevStatus}' 상태에서는 '${st}'(으)로 전이 불가`
+    if (!toOk) return `'${st}' 다음에는 뒷선 '${nextStatus}'(으)로 이어질 수 없음`
+    return '전이 불가'
+  }
+
   // 기본 일자 설정
   const defaultDateStr = () => {
     if (initialItem?.date) return initialItem.date
-    if (prevItem && nextItem) {
-      // 앞/뒤 중간 날짜 또는 앞 날짜
-      return prevItem.date
-    }
     if (prevItem) return prevItem.date
     return formatDateString(new Date())
   }
 
   const [date, setDate] = useState<string>(defaultDateStr)
+  const [reason, setReason] = useState(initialItem?.reason || '')
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
 
   // 선택된 상태
@@ -666,32 +795,14 @@ function CareerHistoryEditModal({
     return validCandidateStatuses[0] || fromAllowed[0] || '휴직'
   })
 
-  // 슬롯 변경 시 앞/뒤 재계산 및 유효 상태 자동 보정
-  const handleSlotChange = (newSlot: number) => {
-    setSlotIndex(newSlot)
-    const p = newSlot > 0 ? existingList[newSlot - 1] : existingList[0] || null
-    const n = newSlot < existingList.length ? existingList[newSlot] : null
-
-    const pStat = p ? p.type : '재직'
-    const nStat = n ? n.type : null
-
-    const fAllow = ALLOWED_TRANSITIONS[pStat] || ALL_CAREER_STATUSES
-    const tAllow = nStat
-      ? ALL_CAREER_STATUSES.filter(c => (ALLOWED_TRANSITIONS[c] || []).includes(nStat))
-      : ALL_CAREER_STATUSES
-    const vCandidates = fAllow.filter(st => tAllow.includes(st))
-
-    if (!vCandidates.includes(type)) {
-      setType(vCandidates[0] || fAllow[0] || '휴직')
+  // 날짜/상태 유효성 보정
+  useEffect(() => {
+    if (!validCandidateStatuses.includes(type)) {
+      if (validCandidateStatuses.length > 0) {
+        setType(validCandidateStatuses[0])
+      }
     }
-
-    // 날짜도 해당 슬롯 범위로 가이드
-    if (p && date < p.date) {
-      setDate(p.date)
-    } else if (n && date > n.date) {
-      setDate(n.date)
-    }
-  }
+  }, [validCandidateStatuses, type])
 
   function handleSubmit() {
     if (!date) {
@@ -716,7 +827,7 @@ function CareerHistoryEditModal({
   return (
     <div className="fixed inset-0 z-[75] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity" onClick={onClose} />
-      <div className="relative bg-white rounded-[16px] shadow-[0px_20px_50px_rgba(0,0,0,0.2)] w-full max-w-[500px] flex flex-col overflow-hidden border border-[#c2cfdf] animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative bg-white rounded-[16px] shadow-[0px_20px_50px_rgba(0,0,0,0.2)] w-full max-w-[520px] flex flex-col overflow-hidden border border-[#c2cfdf] animate-in fade-in zoom-in-95 duration-200">
         {/* 헤더 */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#c2cfdf] bg-white shrink-0">
           <span className="font-bold text-[17px] text-[#0e1225] tracking-tight">
@@ -751,57 +862,63 @@ function CareerHistoryEditModal({
 
         {/* 폼 본문 */}
         <div className="p-5 flex flex-col gap-4 text-[13px] max-h-[70vh] overflow-y-auto">
-          {/* 1. 어느 이력 사이에 추가할지 (삽입 위치 슬롯 선택) */}
-          {!isEdit && existingList.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <label className="font-bold text-[#0e1225] flex items-center gap-1">
-                이력 삽입 위치 <span className="text-[#ef5a27]">*</span>
-              </label>
-              <select
-                value={slotIndex}
-                onChange={e => handleSlotChange(parseInt(e.target.value, 10))}
-                className="h-[38px] w-full border border-[#c2cfdf] rounded-[6px] px-3 text-[13px] text-[#0e1225] bg-white focus:outline-none focus:border-[#2a3461] cursor-pointer"
-              >
-                {existingList.map((h, idx) => (
-                  <option key={h.id || idx} value={idx + 1}>
-                    {idx + 1}번 [{h.type} : {h.date}] 다음 위치에 추가
-                  </option>
-                ))}
-              </select>
+          {/* 1. 선택된 순번 위치 배너 */}
+          {!isEdit && (
+            <div className="p-3 bg-[#f0f4fa] border border-[#bfdbfe] rounded-[8px] flex items-center justify-between shadow-2xs">
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-2 py-0.5 bg-[#2563eb] text-white text-[11px] font-bold rounded-[4px]">
+                    {safeSlot + 1}번 순번으로 삽입
+                  </span>
+                  <span className="text-[11.5px] text-[#475569]">
+                    (총 {existingList.length + 1}건 중 {safeSlot + 1}번째)
+                  </span>
+                </div>
+                <span className="text-[12.5px] font-medium text-[#1e293b] pt-0.5">
+                  {prevItem ? `${prevItem.seq || 1}번 [${prevItem.type} : ${prevItem.date}]` : '시작'} ➔ <strong className="text-[#2563eb]">신규</strong> ➔ {nextItem ? `${nextItem.seq || safeSlot + 1}번 [${nextItem.type} : ${nextItem.date}]` : '최신(끝)'}
+                </span>
+              </div>
+              {onChangeSlotClick && (
+                <button
+                  type="button"
+                  onClick={onChangeSlotClick}
+                  className="px-2.5 py-1.5 bg-white border border-[#2a3461] text-[#2a3461] rounded-[6px] text-[12px] font-bold hover:bg-[#eef3fa] transition-colors cursor-pointer shrink-0"
+                >
+                  위치 변경
+                </button>
+              )}
             </div>
           )}
 
-          {/* 2. 앞/뒤 상태 흐름 시각화 카드 */}
+          {/* 2. 앞/뒤 상태 전이 흐름 시각화 카드 */}
           <div className="p-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-[8px] flex flex-col gap-1.5">
             <span className="text-[11px] font-bold text-[#64748b]">앞 / 뒤 상태 전이 검증 흐름:</span>
             <div className="flex items-center justify-between gap-1 text-[12px] pt-0.5">
               {/* 앞선 상태 */}
               <div className="flex-1 bg-white border border-[#cbd5e1] rounded-[6px] p-2 flex flex-col items-center text-center">
-                <span className="text-[10.5px] text-[#64748b]">앞선 이력</span>
+                <span className="text-[10.5px] text-[#64748b]">앞선 이력 ({prevItem?.seq || 1}번)</span>
                 <span className="font-bold text-[#0e1225]">{prevStatus}</span>
                 <span className="text-[10px] text-[#94a3b8] font-mono">{prevItem?.date || '-'}</span>
               </div>
 
-              {/* 연결 화살표 */}
               <div className="flex flex-col items-center px-1">
                 <span className="text-[#2a3461] font-bold">➔</span>
               </div>
 
               {/* 신규 선택 상태 */}
               <div className="flex-1 bg-[#f0f4fa] border-2 border-[#2a3461] rounded-[6px] p-2 flex flex-col items-center text-center shadow-xs">
-                <span className="text-[10.5px] text-[#2a3461] font-semibold">신규 추가</span>
+                <span className="text-[10.5px] text-[#2a3461] font-semibold">신규 ({safeSlot + 1}번)</span>
                 <span className="font-bold text-[#2a3461]">{type}</span>
                 <span className="text-[10px] text-[#2a3461] font-mono">{date || '선택일'}</span>
               </div>
 
-              {/* 연결 화살표 */}
               <div className="flex flex-col items-center px-1">
                 <span className="text-[#2a3461] font-bold">➔</span>
               </div>
 
               {/* 뒷선 상태 */}
               <div className="flex-1 bg-white border border-[#cbd5e1] rounded-[6px] p-2 flex flex-col items-center text-center">
-                <span className="text-[10.5px] text-[#64748b]">뒷선 이력</span>
+                <span className="text-[10.5px] text-[#64748b]">뒷선 이력 ({nextItem?.seq ? `${nextItem.seq}번` : '없음'})</span>
                 <span className="font-bold text-[#0e1225]">{nextStatus || '없음(최신)'}</span>
                 <span className="text-[10px] text-[#94a3b8] font-mono">{nextItem?.date || '현재'}</span>
               </div>
@@ -843,14 +960,14 @@ function CareerHistoryEditModal({
             </div>
           </div>
 
-          {/* 4. 직원 상태 선택 (앞/뒤 상태를 모두 만족하는 상태만 활성화) */}
+          {/* 4. 직원 상태 선택 (앞/뒤 상태를 모두 만족하는 상태만 활성화 + 명확한 사유 안내) */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <label className="font-bold text-[#0e1225] flex items-center gap-1">
                 직원상태 <span className="text-[#ef5a27]">*</span>
               </label>
               <span className="text-[11px] text-[#64748b]">
-                *앞({prevStatus}) 및 뒤({nextStatus || '최신'}) 상태 기준 전이 가능 상태
+                *앞({prevStatus}) 및 뒤({nextStatus || '최신'}) 기준
               </span>
             </div>
 
@@ -862,11 +979,12 @@ function CareerHistoryEditModal({
                 </span>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-1 gap-2 pt-1">
                 {ALL_CAREER_STATUSES.map(st => {
                   const isAllowed = validCandidateStatuses.includes(st)
                   const isSelected = type === st
                   const color = STATUS_COLOR_MAP[st] || { bg: 'bg-white', text: 'text-[#0e1225]', border: 'border-[#c2cfdf]' }
+                  const invalidReason = !isAllowed ? getInvalidReason(st) : ''
 
                   return (
                     <button
@@ -874,27 +992,44 @@ function CareerHistoryEditModal({
                       type="button"
                       disabled={!isAllowed}
                       onClick={() => isAllowed && setType(st)}
-                      className={`h-[42px] rounded-[8px] border text-[13px] font-semibold flex items-center justify-between px-3 transition-all ${
+                      className={`p-2.5 rounded-[8px] border text-left flex flex-col gap-1 transition-all ${
                         !isAllowed
-                          ? 'bg-[#f8fafc] text-[#cbd5e1] border-[#e2e8f0] cursor-not-allowed opacity-50'
+                          ? 'bg-[#f8fafc] border-[#e2e8f0] cursor-not-allowed opacity-60'
                           : isSelected
-                            ? 'border-[#2a3461] bg-[#f0f4fa] text-[#2a3461] ring-2 ring-[#2a3461]/20 shadow-2xs font-bold'
-                            : 'border-[#c2cfdf] bg-white text-[#334155] hover:border-[#2a3461] hover:bg-[#fafbfc] cursor-pointer'
+                            ? 'border-[#2a3461] bg-[#f0f4fa] ring-2 ring-[#2a3461]/20 shadow-2xs'
+                            : 'border-[#c2cfdf] bg-white hover:border-[#2a3461] hover:bg-[#fafbfc] cursor-pointer'
                       }`}
                     >
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                            isSelected ? 'border-[#2a3461] bg-[#2a3461]' : 'border-[#94a3b8]'
-                          }`}
-                        >
-                          {isSelected && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                              isSelected ? 'border-[#2a3461] bg-[#2a3461]' : 'border-[#94a3b8]'
+                            }`}
+                          >
+                            {isSelected && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
+                          </span>
+                          <span className={`font-bold text-[13.5px] ${isSelected ? 'text-[#2a3461]' : isAllowed ? 'text-[#0e1225]' : 'text-[#94a3b8]'}`}>
+                            {st}
+                          </span>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-[4px] text-[11px] font-semibold border ${color.bg} ${color.text} ${color.border}`}>
+                          {st}
                         </span>
-                        {st}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-[4px] text-[11px] border ${color.bg} ${color.text} ${color.border}`}>
-                        {st}
-                      </span>
+                      </div>
+
+                      {/* 상태 사유/설명 라벨 */}
+                      <div className="text-[11px] pl-6">
+                        {isAllowed ? (
+                          <span className="text-[#16a34a] font-medium">
+                            ✓ 전이 성립: [{prevStatus}] ➔ <strong className="font-bold">[{st}]</strong> ➔ [{nextStatus || '최신'}]
+                          </span>
+                        ) : (
+                          <span className="text-[#ef4444] font-medium">
+                            ✕ 불가: {invalidReason}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   )
                 })}
@@ -1364,9 +1499,10 @@ export default function EmployeeManagementPage() {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
   const [isTenureModalOpen, setIsTenureModalOpen] = useState(false)
   const [isCareerAuditModalOpen, setIsCareerAuditModalOpen] = useState(false)
+  const [isSlotSelectModalOpen, setIsSlotSelectModalOpen] = useState(false)
   const [isCareerEditModalOpen, setIsCareerEditModalOpen] = useState(false)
   const [editingCareerItem, setEditingCareerItem] = useState<CareerHistoryItem | null>(null)
-  const [insertAfterCareerId, setInsertAfterCareerId] = useState<string | null>(null)
+  const [selectedSlotIndex, setSelectedSlotIndex] = useState<number>(0)
 
   const selected = employees.find(e => e.id === selectedId) ?? employees[0] ?? null
 
@@ -1532,21 +1668,27 @@ export default function EmployeeManagementPage() {
   // 4. 이력 수정 모달 오픈
   function handleStartEditCareer(item: CareerHistoryItem) {
     setEditingCareerItem(item)
-    setInsertAfterCareerId(null)
+    const idx = (selected?.careerHistory || []).findIndex(h => h.id === item.id)
+    setSelectedSlotIndex(idx === -1 ? 0 : idx)
     setIsCareerEditModalOpen(true)
   }
 
-  // 5. 신규 이력 등록 모달 오픈 (기본: 맨 뒤)
+  // 5. 신규 이력 등록 (이력 위치 선택 모달 우선 호출)
   function handleStartCreateCareer() {
     setEditingCareerItem(null)
-    setInsertAfterCareerId(null)
-    setIsCareerEditModalOpen(true)
+    const currentHist = selected?.careerHistory || []
+    if (currentHist.length > 0) {
+      setIsSlotSelectModalOpen(true)
+    } else {
+      setSelectedSlotIndex(0)
+      setIsCareerEditModalOpen(true)
+    }
   }
 
-  // 6. 특정 이력 바로 뒤에 중간 이력 삽입 모달 오픈
-  function handleStartInsertCareer(afterId: string) {
+  // 6. 특정 이력 바로 뒤에 중간 이력 삽입 모달 바로 오픈
+  function handleStartInsertCareer(targetSlotIndex: number) {
     setEditingCareerItem(null)
-    setInsertAfterCareerId(afterId)
+    setSelectedSlotIndex(targetSlotIndex)
     setIsCareerEditModalOpen(true)
   }
 
@@ -1560,7 +1702,7 @@ export default function EmployeeManagementPage() {
       reason: '센트럴케어 직원 재입사',
       syncStatus: '희',
     })
-    setInsertAfterCareerId(null)
+    setSelectedSlotIndex((selected?.careerHistory || []).length)
     setIsCareerEditModalOpen(true)
     setActiveSubTab('재직이력')
   }
@@ -2242,7 +2384,7 @@ export default function EmployeeManagementPage() {
                               <td className="px-2 py-2.5 text-center">
                                 <div className="flex items-center justify-center gap-1">
                                   <button
-                                    onClick={() => handleStartInsertCareer(item.id)}
+                                    onClick={() => handleStartInsertCareer(idx + 1)}
                                     title="이 이력 바로 다음에 중간 이력 추가"
                                     className="px-2 py-1 border border-[#bfdbfe] bg-[#eff6ff] rounded-[4px] text-[11px] font-semibold text-[#2563eb] hover:bg-[#dbeafe] transition-colors cursor-pointer"
                                   >
@@ -2451,17 +2593,33 @@ export default function EmployeeManagementPage() {
         />
       )}
 
-      {/* ─── 재직 이력 등록 / 수정 모달 (중간 이력 삽입 및 앞/뒤 교차 검증) ─── */}
+      {/* ─── 재직 이력 순번(위치) 선택 전용 모달 ─── */}
+      {isSlotSelectModalOpen && selected && (
+        <CareerSlotSelectModal
+          employee={selected}
+          onSelectSlot={slotIdx => {
+            setSelectedSlotIndex(slotIdx)
+            setIsSlotSelectModalOpen(false)
+            setIsCareerEditModalOpen(true)
+          }}
+          onClose={() => setIsSlotSelectModalOpen(false)}
+        />
+      )}
+
+      {/* ─── 재직 이력 등록 / 수정 모달 (스마트 상태 전이 검증) ─── */}
       {isCareerEditModalOpen && selected && (
         <CareerHistoryEditModal
           employee={selected}
           initialItem={editingCareerItem}
-          initialInsertAfterId={insertAfterCareerId}
+          slotIndex={selectedSlotIndex}
+          onChangeSlotClick={() => {
+            setIsCareerEditModalOpen(false)
+            setIsSlotSelectModalOpen(true)
+          }}
           onSave={handleSaveCareerModal}
           onClose={() => {
             setIsCareerEditModalOpen(false)
             setEditingCareerItem(null)
-            setInsertAfterCareerId(null)
           }}
         />
       )}
