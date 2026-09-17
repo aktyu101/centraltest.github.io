@@ -563,7 +563,7 @@ function CareerAuditModal({
   )
 }
 
-// ─── Figma 1:1 재직 이력 등록 / 수정 팝업 모달 (Node 2596-30660 상태 전이 정책 반영) ────────
+// ─── Figma 1:1 재직 이력 등록 / 수정 팝업 모달 (앞/뒤 상태 교차 검증 엔진 탑재) ───────
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   최초입사일: ['휴직', '퇴직'],
@@ -574,7 +574,10 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   재입사: ['퇴직', '휴직', '보류'],
 }
 
+const ALL_CAREER_STATUSES = ['휴직', '퇴직', '재입사', '보류']
+
 const STATUS_COLOR_MAP: Record<string, { bg: string; text: string; border: string }> = {
+  최초입사일: { bg: 'bg-[#e8f8ed]', text: 'text-[#1c9640]', border: 'border-[#c6f0d2]' },
   재직: { bg: 'bg-[#e8f8ed]', text: 'text-[#1c9640]', border: 'border-[#c6f0d2]' },
   재입사: { bg: 'bg-[#eff6ff]', text: 'text-[#2563eb]', border: 'border-[#bfdbfe]' },
   휴직: { bg: 'bg-[#fff7ed]', text: 'text-[#ea580c]', border: 'border-[#fed7aa]' },
@@ -585,58 +588,122 @@ const STATUS_COLOR_MAP: Record<string, { bg: string; text: string; border: strin
 function CareerHistoryEditModal({
   employee,
   initialItem,
+  initialInsertAfterId,
   onSave,
   onClose,
 }: {
   employee: Employee
   initialItem?: CareerHistoryItem | null
+  initialInsertAfterId?: string | null
   onSave: (date: string, type: string, reason: string) => void
   onClose: () => void
 }) {
   const age = calcAge(employee.dob)
-  const todayStr = formatDateString(new Date())
+  const isEdit = !!(initialItem && initialItem.id)
 
-  const isEdit = !!initialItem
-  const [date, setDate] = useState(initialItem?.date || todayStr)
-  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
-  const [reason, setReason] = useState(initialItem?.reason || '')
-
-  // 1. 선택한 적용일(date) 기준 직전 상태 계산 (Figma 2596-30660 상태 전이 엔진)
-  const otherHistories = (employee.careerHistory || [])
-    .filter(h => (!initialItem ? true : h.id !== initialItem.id))
+  // 1. 기존 이력 정렬 목록 (수정 중인 항목 제외)
+  const existingList = [...(employee.careerHistory || [])]
+    .filter(h => (!isEdit ? true : h.id !== initialItem?.id))
     .sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date)
       return (a.seq ?? 0) - (b.seq ?? 0)
     })
 
-  // 적용일 이전 또는 동일 날짜의 마지막 이력
-  const prevHistory = [...otherHistories].reverse().find(h => h.date <= date) || otherHistories[0]
-  const prevStatus = prevHistory ? prevHistory.type : '재직'
+  // 2. 삽입 위치 슬롯 (0: 1번 이력 뒤, ..., existingList.length: 맨 뒤)
+  const defaultSlotIndex = () => {
+    if (isEdit && initialItem) {
+      // 수정인 경우 기존 위치 기준
+      const idx = existingList.findIndex(h => h.date >= initialItem.date)
+      return idx === -1 ? existingList.length : idx
+    }
+    if (initialInsertAfterId) {
+      const idx = existingList.findIndex(h => h.id === initialInsertAfterId)
+      return idx === -1 ? existingList.length : idx + 1
+    }
+    return existingList.length
+  }
 
-  // 2. 직전 상태 기준 전이 가능한 상태 목록 도출 (직무변경 제외)
-  const candidateStatuses = ALLOWED_TRANSITIONS[prevStatus] || ['휴직', '퇴직', '재입사', '보류']
+  const [slotIndex, setSlotIndex] = useState<number>(defaultSlotIndex)
+  const [reason, setReason] = useState(initialItem?.reason || '')
 
+  // 앞 이력 & 뒤 이력 탐색
+  const prevItem = slotIndex > 0 ? existingList[slotIndex - 1] : existingList[0] || null
+  const nextItem = slotIndex < existingList.length ? existingList[slotIndex] : null
+
+  const prevStatus = prevItem ? prevItem.type : '재직'
+  const nextStatus = nextItem ? nextItem.type : null
+
+  // 3. 앞/뒤 상태 교차 검증 (Double-Bounded Transition Logic)
+  // S_from: prevStatus에서 전이 가능한 상태들
+  const fromAllowed = ALLOWED_TRANSITIONS[prevStatus] || ALL_CAREER_STATUSES
+  // S_to: 신규 상태 X에서 nextStatus로 전이 가능한 X의 집합
+  const toAllowed = nextStatus
+    ? ALL_CAREER_STATUSES.filter(candidate => (ALLOWED_TRANSITIONS[candidate] || []).includes(nextStatus))
+    : ALL_CAREER_STATUSES
+
+  // 교집합 (S_valid = S_from ∩ S_to)
+  const validCandidateStatuses = fromAllowed.filter(st => toAllowed.includes(st))
+
+  // 기본 일자 설정
+  const defaultDateStr = () => {
+    if (initialItem?.date) return initialItem.date
+    if (prevItem && nextItem) {
+      // 앞/뒤 중간 날짜 또는 앞 날짜
+      return prevItem.date
+    }
+    if (prevItem) return prevItem.date
+    return formatDateString(new Date())
+  }
+
+  const [date, setDate] = useState<string>(defaultDateStr)
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+
+  // 선택된 상태
   const [type, setType] = useState<string>(() => {
-    if (initialItem?.type && candidateStatuses.includes(initialItem.type)) {
+    if (initialItem?.type && validCandidateStatuses.includes(initialItem.type)) {
       return initialItem.type
     }
-    return candidateStatuses[0] || '휴직'
+    return validCandidateStatuses[0] || fromAllowed[0] || '휴직'
   })
 
-  // 날짜 변경 시 전이 가능 상태 자동 보정
-  const handleDateChange = (newDateStr: string) => {
-    setDate(newDateStr)
-    const nextPrevHist = [...otherHistories].reverse().find(h => h.date <= newDateStr) || otherHistories[0]
-    const nextPrevStatus = nextPrevHist ? nextPrevHist.type : '재직'
-    const nextCandidates = ALLOWED_TRANSITIONS[nextPrevStatus] || ['휴직', '퇴직', '재입사', '보류']
-    if (!nextCandidates.includes(type)) {
-      setType(nextCandidates[0] || '휴직')
+  // 슬롯 변경 시 앞/뒤 재계산 및 유효 상태 자동 보정
+  const handleSlotChange = (newSlot: number) => {
+    setSlotIndex(newSlot)
+    const p = newSlot > 0 ? existingList[newSlot - 1] : existingList[0] || null
+    const n = newSlot < existingList.length ? existingList[newSlot] : null
+
+    const pStat = p ? p.type : '재직'
+    const nStat = n ? n.type : null
+
+    const fAllow = ALLOWED_TRANSITIONS[pStat] || ALL_CAREER_STATUSES
+    const tAllow = nStat
+      ? ALL_CAREER_STATUSES.filter(c => (ALLOWED_TRANSITIONS[c] || []).includes(nStat))
+      : ALL_CAREER_STATUSES
+    const vCandidates = fAllow.filter(st => tAllow.includes(st))
+
+    if (!vCandidates.includes(type)) {
+      setType(vCandidates[0] || fAllow[0] || '휴직')
+    }
+
+    // 날짜도 해당 슬롯 범위로 가이드
+    if (p && date < p.date) {
+      setDate(p.date)
+    } else if (n && date > n.date) {
+      setDate(n.date)
     }
   }
 
   function handleSubmit() {
     if (!date) {
       alert('적용 일자를 입력해 주세요.')
+      return
+    }
+    if (prevItem && date < prevItem.date) {
+      alert(`적용 일자는 앞선 이력 일자(${prevItem.date})보다 이전일 수 없습니다.`)
+      return
+    }
+    if (nextItem && date > nextItem.date) {
+      alert(`적용 일자는 뒷선 이력 일자(${nextItem.date})보다 이후일 수 없습니다.`)
       return
     }
     if (!type) {
@@ -649,7 +716,7 @@ function CareerHistoryEditModal({
   return (
     <div className="fixed inset-0 z-[75] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity" onClick={onClose} />
-      <div className="relative bg-white rounded-[16px] shadow-[0px_20px_50px_rgba(0,0,0,0.2)] w-full max-w-[480px] flex flex-col overflow-hidden border border-[#c2cfdf] animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative bg-white rounded-[16px] shadow-[0px_20px_50px_rgba(0,0,0,0.2)] w-full max-w-[500px] flex flex-col overflow-hidden border border-[#c2cfdf] animate-in fade-in zoom-in-95 duration-200">
         {/* 헤더 */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#c2cfdf] bg-white shrink-0">
           <span className="font-bold text-[17px] text-[#0e1225] tracking-tight">
@@ -677,21 +744,80 @@ function CareerHistoryEditModal({
               {employee.dob} ({age}세)
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11.5px] text-[#64748b]">직전 상태:</span>
-            <span className="px-2 py-0.5 bg-[#eef2f8] text-[#2a3461] rounded-[4px] text-[11.5px] font-bold border border-[#d8e2ee]">
-              {prevStatus}
-            </span>
-          </div>
+          <span className="px-2.5 py-1 bg-[#eef2f8] text-[#334155] rounded-[4px] text-[12px] font-semibold border border-[#d8e2ee]">
+            {employee.job}
+          </span>
         </div>
 
         {/* 폼 본문 */}
-        <div className="p-5 flex flex-col gap-4 text-[13px]">
-          {/* 1. 적용 일자 (디자인 시스템 전용 달력 모달 연동) */}
+        <div className="p-5 flex flex-col gap-4 text-[13px] max-h-[70vh] overflow-y-auto">
+          {/* 1. 어느 이력 사이에 추가할지 (삽입 위치 슬롯 선택) */}
+          {!isEdit && existingList.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <label className="font-bold text-[#0e1225] flex items-center gap-1">
+                이력 삽입 위치 <span className="text-[#ef5a27]">*</span>
+              </label>
+              <select
+                value={slotIndex}
+                onChange={e => handleSlotChange(parseInt(e.target.value, 10))}
+                className="h-[38px] w-full border border-[#c2cfdf] rounded-[6px] px-3 text-[13px] text-[#0e1225] bg-white focus:outline-none focus:border-[#2a3461] cursor-pointer"
+              >
+                {existingList.map((h, idx) => (
+                  <option key={h.id || idx} value={idx + 1}>
+                    {idx + 1}번 [{h.type} : {h.date}] 다음 위치에 추가
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 2. 앞/뒤 상태 흐름 시각화 카드 */}
+          <div className="p-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-[8px] flex flex-col gap-1.5">
+            <span className="text-[11px] font-bold text-[#64748b]">앞 / 뒤 상태 전이 검증 흐름:</span>
+            <div className="flex items-center justify-between gap-1 text-[12px] pt-0.5">
+              {/* 앞선 상태 */}
+              <div className="flex-1 bg-white border border-[#cbd5e1] rounded-[6px] p-2 flex flex-col items-center text-center">
+                <span className="text-[10.5px] text-[#64748b]">앞선 이력</span>
+                <span className="font-bold text-[#0e1225]">{prevStatus}</span>
+                <span className="text-[10px] text-[#94a3b8] font-mono">{prevItem?.date || '-'}</span>
+              </div>
+
+              {/* 연결 화살표 */}
+              <div className="flex flex-col items-center px-1">
+                <span className="text-[#2a3461] font-bold">➔</span>
+              </div>
+
+              {/* 신규 선택 상태 */}
+              <div className="flex-1 bg-[#f0f4fa] border-2 border-[#2a3461] rounded-[6px] p-2 flex flex-col items-center text-center shadow-xs">
+                <span className="text-[10.5px] text-[#2a3461] font-semibold">신규 추가</span>
+                <span className="font-bold text-[#2a3461]">{type}</span>
+                <span className="text-[10px] text-[#2a3461] font-mono">{date || '선택일'}</span>
+              </div>
+
+              {/* 연결 화살표 */}
+              <div className="flex flex-col items-center px-1">
+                <span className="text-[#2a3461] font-bold">➔</span>
+              </div>
+
+              {/* 뒷선 상태 */}
+              <div className="flex-1 bg-white border border-[#cbd5e1] rounded-[6px] p-2 flex flex-col items-center text-center">
+                <span className="text-[10.5px] text-[#64748b]">뒷선 이력</span>
+                <span className="font-bold text-[#0e1225]">{nextStatus || '없음(최신)'}</span>
+                <span className="text-[10px] text-[#94a3b8] font-mono">{nextItem?.date || '현재'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. 적용 일자 (디자인 시스템 전용 달력 모달 연동) */}
           <div className="flex flex-col gap-1.5">
-            <label className="font-bold text-[#0e1225] flex items-center gap-1">
-              적용 일자 <span className="text-[#ef5a27]">*</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-[#0e1225] flex items-center gap-1">
+                적용 일자 <span className="text-[#ef5a27]">*</span>
+              </label>
+              <span className="text-[11px] text-[#64748b]">
+                허용 범위: {prevItem?.date || '-'} ~ {nextItem?.date || '현재'}
+              </span>
+            </div>
             <div className="relative flex items-center">
               <input
                 type="text"
@@ -717,25 +843,28 @@ function CareerHistoryEditModal({
             </div>
           </div>
 
-          {/* 2. 직원 상태 (Figma 상태 전이 룰에 따른 선택 라디오 그룹) */}
+          {/* 4. 직원 상태 선택 (앞/뒤 상태를 모두 만족하는 상태만 활성화) */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <label className="font-bold text-[#0e1225] flex items-center gap-1">
                 직원상태 <span className="text-[#ef5a27]">*</span>
               </label>
               <span className="text-[11px] text-[#64748b]">
-                *{prevStatus} 상태에서 변경 가능한 상태만 활성화됩니다.
+                *앞({prevStatus}) 및 뒤({nextStatus || '최신'}) 상태 기준 전이 가능 상태
               </span>
             </div>
 
-            {candidateStatuses.length === 0 ? (
-              <div className="p-3 bg-[#fef2f2] border border-[#fecaca] rounded-[6px] text-[12px] text-[#b91c1c]">
-                선택 가능한 상태가 없습니다. 기존 이력을 확인해 주세요.
+            {validCandidateStatuses.length === 0 ? (
+              <div className="p-3 bg-[#fef2f2] border border-[#fecaca] rounded-[8px] text-[12px] text-[#b91c1c] flex flex-col gap-1">
+                <span className="font-bold">⚠️ 선택 가능한 직원상태가 없습니다.</span>
+                <span>
+                  앞선 상태({prevStatus})에서 전이될 수 있고, 뒷선 상태({nextStatus})로 이어질 수 있는 유효 상태가 존재하지 않습니다. 삽입 위치나 앞/뒤 이력을 먼저 확인해 주세요.
+                </span>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2 pt-1">
-                {['휴직', '퇴직', '재입사', '보류'].map(st => {
-                  const isAllowed = candidateStatuses.includes(st)
+                {ALL_CAREER_STATUSES.map(st => {
+                  const isAllowed = validCandidateStatuses.includes(st)
                   const isSelected = type === st
                   const color = STATUS_COLOR_MAP[st] || { bg: 'bg-white', text: 'text-[#0e1225]', border: 'border-[#c2cfdf]' }
 
@@ -747,7 +876,7 @@ function CareerHistoryEditModal({
                       onClick={() => isAllowed && setType(st)}
                       className={`h-[42px] rounded-[8px] border text-[13px] font-semibold flex items-center justify-between px-3 transition-all ${
                         !isAllowed
-                          ? 'bg-[#f8fafc] text-[#cbd5e1] border-[#e2e8f0] cursor-not-allowed opacity-60'
+                          ? 'bg-[#f8fafc] text-[#cbd5e1] border-[#e2e8f0] cursor-not-allowed opacity-50'
                           : isSelected
                             ? 'border-[#2a3461] bg-[#f0f4fa] text-[#2a3461] ring-2 ring-[#2a3461]/20 shadow-2xs font-bold'
                             : 'border-[#c2cfdf] bg-white text-[#334155] hover:border-[#2a3461] hover:bg-[#fafbfc] cursor-pointer'
@@ -773,22 +902,22 @@ function CareerHistoryEditModal({
             )}
           </div>
 
-          {/* 3. 비고 (변경사유) */}
+          {/* 5. 비고 (변경사유) */}
           <div className="flex flex-col gap-1.5">
             <label className="font-bold text-[#0e1225]">비고 (변경사유)</label>
             <textarea
-              rows={3}
+              rows={2}
               value={reason}
               onChange={e => setReason(e.target.value)}
-              placeholder="상태 변경 사유를 입력하세요 (예: 신규 채용, 개인사정 퇴직, 출산 휴가 등)"
-              className="w-full border border-[#c2cfdf] rounded-[6px] p-3 text-[13px] text-[#0e1225] bg-white focus:outline-none focus:border-[#2a3461] resize-none placeholder:text-[#94a3b8]"
+              placeholder="상태 변경 사유를 입력하세요 (예: 중간 휴직, 복직, 개인사정 등)"
+              className="w-full border border-[#c2cfdf] rounded-[6px] p-2.5 text-[12.5px] text-[#0e1225] bg-white focus:outline-none focus:border-[#2a3461] resize-none placeholder:text-[#94a3b8]"
             />
           </div>
 
           {/* 퇴직 선택 시 안내 박스 */}
           {type === '퇴직' && (
-            <div className="p-3 bg-[#fffbeb] border border-[#fef3c7] rounded-[8px] flex flex-col gap-1 text-[12px] text-[#92400e]">
-              <div className="flex items-start gap-1.5 font-medium">
+            <div className="p-2.5 bg-[#fffbeb] border border-[#fef3c7] rounded-[8px] flex flex-col gap-1 text-[11.5px] text-[#92400e]">
+              <div className="flex items-start gap-1 font-medium">
                 <span>⚠️</span>
                 <span>퇴사일은 마지막 근무일의 <span className="font-bold underline">다음 날</span>로 선택해 주세요.</span>
               </div>
@@ -808,7 +937,12 @@ function CareerHistoryEditModal({
           <button
             type="button"
             onClick={handleSubmit}
-            className="h-[36px] px-5 bg-[#2a3461] text-white rounded-[8px] text-[13px] font-bold hover:bg-[#364275] flex items-center gap-1.5 shadow-xs cursor-pointer"
+            disabled={validCandidateStatuses.length === 0}
+            className={`h-[36px] px-5 rounded-[8px] text-[13px] font-bold flex items-center gap-1.5 shadow-xs transition-colors ${
+              validCandidateStatuses.length === 0
+                ? 'bg-[#cbd5e1] text-white cursor-not-allowed'
+                : 'bg-[#2a3461] text-white hover:bg-[#364275] cursor-pointer'
+            }`}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
@@ -824,7 +958,8 @@ function CareerHistoryEditModal({
         onClose={() => setIsDatePickerOpen(false)}
         selectedDate={date ? new Date(date) : new Date()}
         onSelectDate={d => {
-          handleDateChange(formatDateString(d))
+          const newDateStr = formatDateString(d)
+          setDate(newDateStr)
           setIsDatePickerOpen(false)
         }}
         title="적용 일자 선택"
@@ -1231,6 +1366,7 @@ export default function EmployeeManagementPage() {
   const [isCareerAuditModalOpen, setIsCareerAuditModalOpen] = useState(false)
   const [isCareerEditModalOpen, setIsCareerEditModalOpen] = useState(false)
   const [editingCareerItem, setEditingCareerItem] = useState<CareerHistoryItem | null>(null)
+  const [insertAfterCareerId, setInsertAfterCareerId] = useState<string | null>(null)
 
   const selected = employees.find(e => e.id === selectedId) ?? employees[0] ?? null
 
@@ -1396,16 +1532,25 @@ export default function EmployeeManagementPage() {
   // 4. 이력 수정 모달 오픈
   function handleStartEditCareer(item: CareerHistoryItem) {
     setEditingCareerItem(item)
+    setInsertAfterCareerId(null)
     setIsCareerEditModalOpen(true)
   }
 
-  // 5. 신규 이력 등록 모달 오픈
+  // 5. 신규 이력 등록 모달 오픈 (기본: 맨 뒤)
   function handleStartCreateCareer() {
     setEditingCareerItem(null)
+    setInsertAfterCareerId(null)
     setIsCareerEditModalOpen(true)
   }
 
-  // 6. 재입사 처리 모달 오픈
+  // 6. 특정 이력 바로 뒤에 중간 이력 삽입 모달 오픈
+  function handleStartInsertCareer(afterId: string) {
+    setEditingCareerItem(null)
+    setInsertAfterCareerId(afterId)
+    setIsCareerEditModalOpen(true)
+  }
+
+  // 7. 재입사 처리 모달 오픈
   function handleStartRehire() {
     setEditingCareerItem({
       id: '',
@@ -1415,6 +1560,7 @@ export default function EmployeeManagementPage() {
       reason: '센트럴케어 직원 재입사',
       syncStatus: '희',
     })
+    setInsertAfterCareerId(null)
     setIsCareerEditModalOpen(true)
     setActiveSubTab('재직이력')
   }
@@ -2058,7 +2204,7 @@ export default function EmployeeManagementPage() {
                           <th className="px-3 py-2 text-left w-[140px] border-r border-[#c2cfdf]">구분</th>
                           <th className="px-3 py-2 text-left w-[140px] border-r border-[#c2cfdf]">일자</th>
                           <th className="px-3 py-2 text-left border-r border-[#c2cfdf]">비고</th>
-                          <th className="px-3 py-2 text-center w-[110px]">관리</th>
+                          <th className="px-3 py-2 text-center w-[160px]">관리</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#e2e8f0]">
@@ -2094,16 +2240,29 @@ export default function EmployeeManagementPage() {
                                 {item.reason || '-'}
                               </td>
                               <td className="px-2 py-2.5 text-center">
-                                <div className="flex items-center justify-center gap-1.5">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={() => handleStartInsertCareer(item.id)}
+                                    title="이 이력 바로 다음에 중간 이력 추가"
+                                    className="px-2 py-1 border border-[#bfdbfe] bg-[#eff6ff] rounded-[4px] text-[11px] font-semibold text-[#2563eb] hover:bg-[#dbeafe] transition-colors cursor-pointer"
+                                  >
+                                    + 삽입
+                                  </button>
                                   <button
                                     onClick={() => handleStartEditCareer(item)}
-                                    className="px-2.5 py-1 border border-[#c2cfdf] rounded-[4px] text-[11.5px] font-medium text-[#2a3461] hover:bg-[#eef3fa] hover:border-[#2a3461] transition-colors cursor-pointer"
+                                    className="px-2 py-1 border border-[#c2cfdf] rounded-[4px] text-[11px] font-medium text-[#2a3461] hover:bg-[#eef3fa] hover:border-[#2a3461] transition-colors cursor-pointer"
                                   >
                                     수정
                                   </button>
                                   <button
                                     onClick={() => handleDeleteCareerItem(item.id)}
-                                    className="px-2.5 py-1 border border-[#fecaca] rounded-[4px] text-[11.5px] font-medium text-[#e11d48] hover:bg-[#fee2e2] transition-colors cursor-pointer"
+                                    disabled={item.type === '최초입사일'}
+                                    title={item.type === '최초입사일' ? '최초입사일 이력은 삭제할 수 없습니다.' : '이력 삭제'}
+                                    className={`px-2 py-1 border rounded-[4px] text-[11px] font-medium transition-colors ${
+                                      item.type === '최초입사일'
+                                        ? 'border-[#e2e8f0] text-[#cbd5e1] cursor-not-allowed bg-[#f8fafc]'
+                                        : 'border-[#fecaca] text-[#e11d48] hover:bg-[#fee2e2] cursor-pointer'
+                                    }`}
                                   >
                                     삭제
                                   </button>
@@ -2292,15 +2451,17 @@ export default function EmployeeManagementPage() {
         />
       )}
 
-      {/* ─── 재직 이력 등록 / 수정 모달 ─── */}
+      {/* ─── 재직 이력 등록 / 수정 모달 (중간 이력 삽입 및 앞/뒤 교차 검증) ─── */}
       {isCareerEditModalOpen && selected && (
         <CareerHistoryEditModal
           employee={selected}
           initialItem={editingCareerItem}
+          initialInsertAfterId={insertAfterCareerId}
           onSave={handleSaveCareerModal}
           onClose={() => {
             setIsCareerEditModalOpen(false)
             setEditingCareerItem(null)
+            setInsertAfterCareerId(null)
           }}
         />
       )}
