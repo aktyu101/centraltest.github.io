@@ -795,11 +795,10 @@ function CareerAuditModal({
                     <div
                       key={log.id}
                       onClick={() => setSelectedLogId(log.id)}
-                      className={`p-3 rounded-[8px] border transition-all cursor-pointer flex flex-col gap-1.5 select-none ${
-                        isSelected
-                          ? 'bg-[#eff6ff] border-[#2563eb] shadow-xs ring-1 ring-[#2563eb]'
-                          : 'bg-white border-[#c2cfdf] hover:border-[#94a3b8] hover:bg-[#fafbfc]'
-                      }`}
+                      className={`p-3 rounded-[8px] border transition-all cursor-pointer flex flex-col gap-1.5 select-none ${isSelected
+                        ? 'bg-[#eff6ff] border-[#2563eb] shadow-xs ring-1 ring-[#2563eb]'
+                        : 'bg-white border-[#c2cfdf] hover:border-[#94a3b8] hover:bg-[#fafbfc]'
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1 text-[12.5px] font-bold font-mono text-[#0e1225]">
@@ -940,13 +939,12 @@ function CareerAuditModal({
                             return (
                               <tr
                                 key={item.id || idx}
-                                className={`border-b border-[#c2cfdf] h-[40px] transition-colors ${
-                                  isNew
-                                    ? 'bg-[#f0fdf4] hover:bg-[#dcfce7]'
-                                    : isModified
-                                      ? 'bg-[#fffbeb] hover:bg-[#fef3c7]'
-                                      : 'bg-white hover:bg-[#f8fafc]'
-                                }`}
+                                className={`border-b border-[#c2cfdf] h-[40px] transition-colors ${isNew
+                                  ? 'bg-[#f0fdf4] hover:bg-[#dcfce7]'
+                                  : isModified
+                                    ? 'bg-[#fffbeb] hover:bg-[#fef3c7]'
+                                    : 'bg-white hover:bg-[#f8fafc]'
+                                  }`}
                               >
                                 <td className="px-2 text-center font-mono text-[#0e1225] border-r border-[#c2cfdf] whitespace-nowrap">{item.seq ?? idx + 1}</td>
                                 <td className="px-3 text-center font-mono font-bold text-[#0e1225] border-r border-[#c2cfdf] whitespace-nowrap">{item.date}</td>
@@ -2323,11 +2321,10 @@ function InsuranceAuditModal({
                     <div
                       key={log.id}
                       onClick={() => setSelectedLogId(log.id)}
-                      className={`p-3 rounded-[8px] border transition-all cursor-pointer flex flex-col gap-1.5 select-none ${
-                        isSelected
-                          ? 'bg-[#eff6ff] border-[#2563eb] shadow-xs ring-1 ring-[#2563eb]'
-                          : 'bg-white border-[#c2cfdf] hover:border-[#94a3b8] hover:bg-[#fafbfc]'
-                      }`}
+                      className={`p-3 rounded-[8px] border transition-all cursor-pointer flex flex-col gap-1.5 select-none ${isSelected
+                        ? 'bg-[#eff6ff] border-[#2563eb] shadow-xs ring-1 ring-[#2563eb]'
+                        : 'bg-white border-[#c2cfdf] hover:border-[#94a3b8] hover:bg-[#fafbfc]'
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1 text-[12.5px] font-bold font-mono text-[#0e1225]">
@@ -2485,13 +2482,12 @@ function InsuranceAuditModal({
                             return (
                               <tr
                                 key={item.id || idx}
-                                className={`border-b border-[#c2cfdf] h-[40px] transition-colors ${
-                                  isNew
-                                    ? 'bg-[#f0fdf4] hover:bg-[#dcfce7]'
-                                    : isModified
-                                      ? 'bg-[#fffbeb] hover:bg-[#fef3c7]'
-                                      : 'bg-white hover:bg-[#f8fafc]'
-                                }`}
+                                className={`border-b border-[#c2cfdf] h-[40px] transition-colors ${isNew
+                                  ? 'bg-[#f0fdf4] hover:bg-[#dcfce7]'
+                                  : isModified
+                                    ? 'bg-[#fffbeb] hover:bg-[#fef3c7]'
+                                    : 'bg-white hover:bg-[#f8fafc]'
+                                  }`}
                               >
                                 <td className="px-1.5 text-center font-mono text-[#0e1225] border-r border-[#c2cfdf] whitespace-nowrap">{item.seq ?? idx + 1}</td>
                                 <td className="px-2 text-center font-mono font-bold text-[#0e1225] border-r border-[#c2cfdf] whitespace-nowrap">{item.date}</td>
@@ -3084,13 +3080,12 @@ function InsuranceHistoryManageModal({
               )}
 
               {/* 6. 비고(변경사유) 필드 */}
-              <div className={`${
-                (formStatus === '취득' && selectedInsurances.includes('국민연금') && selectedInsurances.includes('고용보험'))
-                  ? 'md:col-span-6'
-                  : (formStatus === '취득' && (selectedInsurances.includes('국민연금') || selectedInsurances.includes('고용보험')))
-                    ? 'md:col-span-8'
-                    : 'md:col-span-12'
-              } flex flex-col gap-1`}>
+              <div className={`${(formStatus === '취득' && selectedInsurances.includes('국민연금') && selectedInsurances.includes('고용보험'))
+                ? 'md:col-span-6'
+                : (formStatus === '취득' && (selectedInsurances.includes('국민연금') || selectedInsurances.includes('고용보험')))
+                  ? 'md:col-span-8'
+                  : 'md:col-span-12'
+                } flex flex-col gap-1`}>
                 <label className="font-bold text-[#0e1225] text-[13px]">
                   비고(사유)
                 </label>
@@ -3325,14 +3320,6 @@ function PersonnelChangeReportModal({
         {/* 1. Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#c2cfdf] bg-white shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-[8px] bg-[#fff5f0] border border-[#ffedd5] flex items-center justify-center text-[#ef5a27]">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <line x1="19" y1="8" x2="19" y2="14" />
-                <line x1="22" y1="11" x2="16" y2="11" />
-              </svg>
-            </div>
             <span className="font-bold text-[17px] text-[#0e1225] tracking-tight">희망이음 인력변경 신고 등록</span>
           </div>
           <button onClick={onClose} className="p-1 rounded-[6px] text-[#8a9cb4] hover:text-[#0e1225] hover:bg-[#f1f5f9] transition-colors cursor-pointer" title="닫기">
@@ -3370,11 +3357,10 @@ function PersonnelChangeReportModal({
               {(['채용(입사)', '퇴사(퇴직)', '직종/직무변경', '휴직/복직'] as const).map(type => (
                 <label
                   key={type}
-                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-[6px] border text-[12.5px] font-semibold cursor-pointer transition-all ${
-                    reportType === type
-                      ? 'bg-[#2a3461] text-white border-[#2a3461] shadow-2xs'
-                      : 'bg-white text-[#475569] border-[#cbd5e1] hover:bg-[#f1f5f9]'
-                  }`}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-[6px] border text-[12.5px] font-semibold cursor-pointer transition-all ${reportType === type
+                    ? 'bg-[#2a3461] text-white border-[#2a3461] shadow-2xs'
+                    : 'bg-white text-[#475569] border-[#cbd5e1] hover:bg-[#f1f5f9]'
+                    }`}
                 >
                   <input
                     type="radio"
@@ -4246,7 +4232,7 @@ export default function EmployeeManagementPage() {
             {/* 서브 탭 바 */}
             <div className="bg-[#f4f7fc] border-b border-[#c2cfdf] flex items-center justify-between shrink-0 overflow-x-auto">
               <div className="flex items-center overflow-x-auto">
-                {(['재직이력', '급여계약', '4대보험', '자격증', '인력변경 신고내역', '급여지급내역'] as const).map(t => (
+                {(['재직이력', '급여계약', '4대보험', '자격증', '인력변경 신고내역'/* , '급여지급내역' */] as const).map(t => (
                   <button
                     key={t}
                     onClick={() => setActiveSubTab(t)}
@@ -4746,15 +4732,15 @@ export default function EmployeeManagementPage() {
                 const reports: PersonnelChangeReport[] = selected.personnelChangeReports && selected.personnelChangeReports.length > 0
                   ? selected.personnelChangeReports
                   : [
-                      {
-                        id: `PCR-${selected.id}-1`,
-                        startDate: selected.hireDate || '2025-10-17',
-                        endDate: selected.retireDate || null,
-                        status: (selected.status === '퇴직' ? '퇴직' : selected.status === '휴직' ? '휴직' : '재직') as '재직' | '퇴직' | '휴직',
-                        serviceType: '방문요양',
-                        tenureText: formatTenureText(selected.hireDate, selected.retireDate),
-                      },
-                    ]
+                    {
+                      id: `PCR-${selected.id}-1`,
+                      startDate: selected.hireDate || '2025-10-17',
+                      endDate: selected.retireDate || null,
+                      status: (selected.status === '퇴직' ? '퇴직' : selected.status === '휴직' ? '휴직' : '재직') as '재직' | '퇴직' | '휴직',
+                      serviceType: '방문요양',
+                      tenureText: formatTenureText(selected.hireDate, selected.retireDate),
+                    },
+                  ]
 
                 return (
                   <div className="flex flex-col gap-3">
@@ -4790,13 +4776,12 @@ export default function EmployeeManagementPage() {
                         return (
                           <div
                             key={item.id}
-                            className={`p-3.5 rounded-[8px] border flex items-center justify-between transition-colors shadow-2xs ${
-                              isEmployed
-                                ? 'bg-[#eef9f2] border-[#a7f3d0]'
-                                : isRetired
-                                  ? 'bg-[#f8fafc] border-[#e2e8f0]'
-                                  : 'bg-[#fffbeb] border-[#fde68a]'
-                            }`}
+                            className={`p-3.5 rounded-[8px] border flex items-center justify-between transition-colors shadow-2xs ${isEmployed
+                              ? 'bg-[#eef9f2] border-[#a7f3d0]'
+                              : isRetired
+                                ? 'bg-[#f8fafc] border-[#e2e8f0]'
+                                : 'bg-[#fffbeb] border-[#fde68a]'
+                              }`}
                           >
                             {/* 좌측: 인디케이터 + 기간 + 직종/근속기간 */}
                             <div className="flex flex-col gap-1">
@@ -4812,9 +4797,8 @@ export default function EmployeeManagementPage() {
                                   {item.startDate} ~ {item.endDate || '현재'}
                                 </span>
                               </div>
-                              <div className={`text-[12.5px] pl-4.5 flex items-center gap-1.5 font-medium ${
-                                isEmployed ? 'text-[#475569]' : isRetired ? 'text-[#64748b]' : 'text-[#b45309]'
-                              }`}>
+                              <div className={`text-[12.5px] pl-4.5 flex items-center gap-1.5 font-medium ${isEmployed ? 'text-[#475569]' : isRetired ? 'text-[#64748b]' : 'text-[#b45309]'
+                                }`}>
                                 <span>· {item.serviceType || '방문요양'}</span>
                                 <span>· {item.tenureText || formatTenureText(item.startDate, item.endDate)}</span>
                               </div>
@@ -4823,13 +4807,12 @@ export default function EmployeeManagementPage() {
                             {/* 우측: 뱃지 (Pill) */}
                             <div>
                               <span
-                                className={`px-3.5 py-1 rounded-full text-[12px] font-bold bg-white border shadow-2xs inline-block ${
-                                  isEmployed
-                                    ? 'text-[#16a34a] border-[#86efac]'
-                                    : isRetired
-                                      ? 'text-[#e11d48] border-[#fca5a5]'
-                                      : 'text-[#d97706] border-[#fcd34d]'
-                                }`}
+                                className={`px-3.5 py-1 rounded-full text-[12px] font-bold bg-white border shadow-2xs inline-block ${isEmployed
+                                  ? 'text-[#16a34a] border-[#86efac]'
+                                  : isRetired
+                                    ? 'text-[#e11d48] border-[#fca5a5]'
+                                    : 'text-[#d97706] border-[#fcd34d]'
+                                  }`}
                               >
                                 {item.status}
                               </span>
@@ -4842,8 +4825,8 @@ export default function EmployeeManagementPage() {
                 )
               })()}
 
-              {/* 6. 급여지급내역 */}
-              {activeSubTab === '급여지급내역' && (
+              {/* 6. 급여지급내역 (주석 처리) */}
+              {/* {activeSubTab === '급여지급내역' && (
                 <div className="flex flex-col gap-2.5">
                   <span className="font-bold text-[#0e1225] text-[14px]">월별 급여대장 지급 이력</span>
                   <div className="border border-[#c2cfdf] rounded-[4px] overflow-hidden">
@@ -4875,7 +4858,7 @@ export default function EmployeeManagementPage() {
                     </table>
                   </div>
                 </div>
-              )}
+              )} */}
             </div>
           </div>
         </div>

@@ -1,8 +1,10 @@
-import { useState, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import svgPaths from '@/imports/SideBar/svg-o4o6c5ginm'
 import EvaluationManualPage from './pages/EvaluationManualPage'
 import EmployeeManagementPage from './pages/EmployeeManagementPage'
+import BeneficiaryRecordPage from './pages/BeneficiaryRecordPage'
+import BeneficiaryRecordOverviewPage from './pages/BeneficiaryRecordOverviewPage'
 import BenefitCalculatorModal from './components/BenefitCalculatorModal'
 import DatePickerModal from './components/DatePickerModal'
 import topNavSvg from '@/imports/TopNav/svg-71k32nm55t'
@@ -720,6 +722,111 @@ const ICONS = {
 
 type SidebarIconName = 'Dashboard' | 'RecipientManagement' | 'EmployeeManagement' | 'CareServiceProvision' | 'NursingServiceProvision' | 'ProgramManagement' | 'Inspection' | 'FacilityManagement' | 'Copayment' | 'MessageManagement'
 
+export interface SubMenuItem {
+  label: string
+  badge?: string
+}
+
+export interface SidebarNavItem {
+  label: string
+  icon: SidebarIconName
+  subMenus: SubMenuItem[]
+}
+
+const SIDEBAR_NAV: SidebarNavItem[] = [
+  {
+    label: '대시보드',
+    icon: 'Dashboard',
+    subMenus: [],
+  },
+  {
+    label: '수급자 관리',
+    icon: 'RecipientManagement',
+    subMenus: [
+      { label: '수급자 목록' },
+      { label: '수급자 기록 관리' },
+    ],
+  },
+  {
+    label: '종사자 관리',
+    icon: 'EmployeeManagement',
+    subMenus: [
+      { label: '종사자 목록' },
+      { label: '종사자 기록 관리' },
+      { label: '급여계약 관리' },
+    ],
+  },
+  {
+    label: '요양급여',
+    icon: 'CareServiceProvision',
+    subMenus: [
+      { label: '요양' },
+      { label: '간호' },
+      { label: '프로그램' },
+      { label: '신체 제재 기록' },
+      { label: '목욕일정 및 제공현황' },
+      { label: '집중배설관찰기록' },
+    ],
+  },
+  {
+    label: '간호·물리',
+    icon: 'NursingServiceProvision',
+    subMenus: [
+      { label: '간호기록' },
+      { label: '물리치료 제공기록' },
+      { label: '투약 및 처치관리' },
+      { label: '바이탈 / 건강검진' },
+    ],
+  },
+  {
+    label: '프로그램',
+    icon: 'ProgramManagement',
+    subMenus: [
+      { label: '프로그램 계획 및 일정' },
+      { label: '인지활동형 프로그램' },
+      { label: '신체활동 프로그램' },
+      { label: '여가 및 사회적응' },
+    ],
+  },
+  {
+    label: '식단·위생점검',
+    icon: 'Inspection',
+    subMenus: [
+      { label: '주간 식단표' },
+      { label: '급식 및 위생점검' },
+      { label: '소독 및 방역관리' },
+    ],
+  },
+  {
+    label: '운영·평가',
+    icon: 'FacilityManagement',
+    subMenus: [
+      { label: '공단 평가 관리' },
+      { label: '운영위원회 회의록' },
+      { label: '시설 안전점검' },
+      { label: '종사자 교육 및 훈련' },
+    ],
+  },
+  {
+    label: '본인부담금',
+    icon: 'Copayment',
+    subMenus: [
+      { label: '청구 및 수납관리' },
+      { label: '본인부담금 명세서' },
+      { label: '미납 관리' },
+    ],
+  },
+  {
+    label: '메시지',
+    icon: 'MessageManagement',
+    subMenus: [
+      { label: '문자/알림톡 발송' },
+      { label: '발송 내역 조회' },
+      { label: '메시지 템플릿' },
+    ],
+  },
+]
+
 function SidebarIcon({ icon, fill }: { icon: SidebarIconName; fill: string }) {
   if (icon === 'Dashboard') {
     return (
@@ -820,31 +927,51 @@ function SidebarIcon({ icon, fill }: { icon: SidebarIconName; fill: string }) {
   )
 }
 
-const SIDEBAR_NAV: { label: string; icon: SidebarIconName; active?: boolean }[] = [
-  { label: '대시보드', icon: 'Dashboard' },
-  { label: '수급자 관리', icon: 'RecipientManagement', active: true },
-  { label: '종사자 관리', icon: 'EmployeeManagement' },
-  { label: '요양급여', icon: 'CareServiceProvision' },
-  { label: '간호·물리', icon: 'NursingServiceProvision' },
-  { label: '프로그램', icon: 'ProgramManagement' },
-  { label: '식단·위생점검', icon: 'Inspection' },
-  { label: '운영·평가', icon: 'FacilityManagement' },
-  { label: '본인부담금', icon: 'Copayment' },
-  { label: '메시지', icon: 'MessageManagement' },
-]
-
 function Sidebar({
   collapsed,
   onToggleCollapse,
   activeMenu,
-  onMenuChange
+  onMenuChange,
+  activeSubMenu,
+  onSubMenuChange,
 }: {
-  collapsed?: boolean;
-  onToggleCollapse?: () => void;
-  activeMenu?: string;
-  onMenuChange?: (menu: string) => void;
+  collapsed?: boolean
+  onToggleCollapse?: () => void
+  activeMenu?: string
+  onMenuChange?: (menu: string) => void
+  activeSubMenu?: string
+  onSubMenuChange?: (subMenu: string) => void
 }) {
   const [supportModalOpen, setSupportModalOpen] = useState(false)
+  const [hoveredNav, setHoveredNav] = useState<SidebarNavItem | null>(null)
+  const [flyoutTop, setFlyoutTop] = useState<number>(0)
+  const [currentSubMenu, setCurrentSubMenu] = useState<string>('요양')
+  const closeTimeoutRef = useRef<any>(null)
+
+  const handleItemMouseEnter = (item: SidebarNavItem, e: React.MouseEvent<HTMLDivElement>) => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current)
+      closeTimeoutRef.current = null
+    }
+    const rect = e.currentTarget.getBoundingClientRect()
+    setFlyoutTop(rect.top)
+    setHoveredNav(item)
+  }
+
+  const handleMouseLeave = () => {
+    closeTimeoutRef.current = setTimeout(() => {
+      setHoveredNav(null)
+    }, 150)
+  }
+
+  const handleFlyoutMouseEnter = () => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current)
+      closeTimeoutRef.current = null
+    }
+  }
+
+  const selectedSub = activeSubMenu || currentSubMenu
 
   return (
     <>
@@ -907,25 +1034,41 @@ function Sidebar({
           </div>
         </div>
 
-        {/* Navigation Items */}
+        {/* Navigation Items with Hover Popover Detection */}
         <div className="flex-1 overflow-y-auto py-[10px] px-[8px] flex flex-col gap-[3px]">
           {SIDEBAR_NAV.map(item => {
             const isActive = activeMenu ? item.label === activeMenu : item.label === '수급자 관리'
+            const isHovered = hoveredNav?.label === item.label
             return (
-              <button
+              <div
                 key={item.label}
-                title={collapsed ? item.label : undefined}
-                onClick={() => onMenuChange?.(item.label)}
-                className={`w-full flex items-center ${collapsed ? 'justify-center px-0 h-[44px]' : 'gap-[10px] px-[12px] h-[40px]'} rounded-[6px] text-[13.5px] font-semibold tracking-[-0.2px] transition-all cursor-pointer ${isActive
-                  ? 'bg-[#ef5a27] text-white shadow-sm'
-                  : 'text-[#64748b] hover:bg-[#e8eef8] hover:text-[#0e1225]'
-                  }`}
+                onMouseEnter={e => handleItemMouseEnter(item, e)}
+                onMouseLeave={handleMouseLeave}
+                className="relative"
               >
-                <div className="shrink-0 flex items-center justify-center">
-                  <SidebarIcon icon={item.icon} fill={isActive ? '#ffffff' : '#64748b'} />
-                </div>
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </button>
+                <button
+                  title={collapsed ? item.label : undefined}
+                  onClick={() => {
+                    onMenuChange?.(item.label)
+                    if (item.subMenus && item.subMenus.length > 0) {
+                      const firstSub = item.subMenus[0].label
+                      setCurrentSubMenu(firstSub)
+                      onSubMenuChange?.(firstSub)
+                    }
+                  }}
+                  className={`w-full flex items-center ${collapsed ? 'justify-center px-0 h-[44px]' : 'gap-[10px] px-[12px] h-[40px]'} rounded-[6px] text-[13.5px] font-semibold tracking-[-0.2px] transition-all cursor-pointer ${isActive
+                    ? 'bg-[#ef5a27] text-white shadow-sm'
+                    : isHovered
+                      ? 'bg-[#e8eef8] text-[#0e1225]'
+                      : 'text-[#64748b] hover:bg-[#e8eef8] hover:text-[#0e1225]'
+                    }`}
+                >
+                  <div className="shrink-0 flex items-center justify-center">
+                    <SidebarIcon icon={item.icon} fill={isActive ? '#ffffff' : isHovered ? '#0e1225' : '#64748b'} />
+                  </div>
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </button>
+              </div>
             )
           })}
         </div>
@@ -963,6 +1106,46 @@ function Sidebar({
           )}
         </div>
       </aside>
+
+      {/* ─── 피그마 1:1 2Depth 플라이아웃(Flyout) 팝오버 (Node 1232-61396) ─── */}
+      {hoveredNav && hoveredNav.subMenus && hoveredNav.subMenus.length > 0 && (
+        <div
+          onMouseEnter={handleFlyoutMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          style={{
+            top: `${Math.max(12, Math.min(flyoutTop, (typeof window !== 'undefined' ? window.innerHeight : 800) - (hoveredNav.subMenus.length * 44 + 40)))}px`,
+            left: collapsed ? '74px' : '200px',
+          }}
+          className="fixed z-[999] w-[238px] bg-white rounded-[16px] border border-[#ef5a27] shadow-[0px_4px_16px_rgba(0,0,0,0.08)] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 select-none"
+        >
+          <div className="flex flex-col w-full">
+            {hoveredNav.subMenus.map((sub, idx) => {
+              const isSelected = (activeMenu === hoveredNav.label && selectedSub === sub.label) || (!activeSubMenu && idx === 0 && activeMenu === hoveredNav.label)
+              return (
+                <button
+                  key={sub.label}
+                  onClick={() => {
+                    onMenuChange?.(hoveredNav.label)
+                    setCurrentSubMenu(sub.label)
+                    onSubMenuChange?.(sub.label)
+                    setHoveredNav(null)
+                  }}
+                  className={`w-full h-[44px] px-[16px] flex items-center gap-[6px] transition-colors cursor-pointer ${isSelected
+                    ? 'bg-[#eef1f8] text-[#ef5a27] font-bold text-[14px]'
+                    : 'bg-white hover:bg-[#f8fafc] text-[#556780] hover:text-[#0e1225] font-medium text-[13.5px]'
+                    }`}
+                >
+                  <span
+                    className={`size-[4px] rounded-full shrink-0 ${isSelected ? 'bg-[#ef5a27]' : 'bg-[#8a9cb4]'
+                      }`}
+                  />
+                  <span className="truncate tracking-[-0.26px]">{sub.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Support Modal */}
       {supportModalOpen && createPortal(
@@ -3148,6 +3331,7 @@ function DetailPanel({ person, onClose }: { person: Beneficiary; onClose: () => 
 
 export default function App() {
   const [activeMenu, setActiveMenu] = useState('수급자 관리')
+  const [activeSubMenu, setActiveSubMenu] = useState('수급자 목록')
   const [search, setSearch] = useState('')
   const [filterContract, setFilterContract] = useState('')
   const [filterGrade, setFilterGrade] = useState('')
@@ -3190,7 +3374,11 @@ export default function App() {
         collapsed={isWorkspaceMaximized}
         onToggleCollapse={() => setIsWorkspaceMaximized(m => !m)}
         activeMenu={activeMenu}
-        onMenuChange={setActiveMenu}
+        onMenuChange={(menu) => {
+          setActiveMenu(menu)
+        }}
+        activeSubMenu={activeSubMenu}
+        onSubMenuChange={setActiveSubMenu}
       />
 
       {/* 2. 우측 영역 (상단 GNB + 메인 본문) */}
@@ -3271,6 +3459,8 @@ export default function App() {
           <EvaluationManualPage onBackToBeneficiaries={() => setActiveMenu('수급자 관리')} />
         ) : activeMenu === '종사자 관리' ? (
           <EmployeeManagementPage />
+        ) : (activeMenu === '수급자 관리' && activeSubMenu === '수급자 기록 관리') ? (
+          <BeneficiaryRecordPage />
         ) : (
           <div className="flex flex-1 overflow-hidden p-2 gap-2">
 
@@ -3284,9 +3474,9 @@ export default function App() {
             >
               {/* List header */}
               <div className="p-3 flex flex-col gap-2.5 shrink-0 border-b border-[#c2cfdf] bg-[#fafbfc]">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between h-[32px]">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none">
+                    <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-[32px]">
                       <span className="w-[4px] h-[16px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
                       수급자 목록
                     </h2>
