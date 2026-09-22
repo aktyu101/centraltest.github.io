@@ -5,6 +5,7 @@ import EvaluationManualPage from './pages/EvaluationManualPage'
 import EmployeeManagementPage from './pages/EmployeeManagementPage'
 import BeneficiaryRecordPage from './pages/BeneficiaryRecordPage'
 import BeneficiaryRecordOverviewPage from './pages/BeneficiaryRecordOverviewPage'
+import SalaryContractPage from './pages/SalaryContractPage'
 import BenefitCalculatorModal from './components/BenefitCalculatorModal'
 import DatePickerModal from './components/DatePickerModal'
 import topNavSvg from '@/imports/TopNav/svg-71k32nm55t'
@@ -3458,7 +3459,11 @@ export default function App() {
         ) : activeMenu === '운영·평가' ? (
           <EvaluationManualPage onBackToBeneficiaries={() => setActiveMenu('수급자 관리')} />
         ) : activeMenu === '종사자 관리' ? (
-          <EmployeeManagementPage />
+          (activeSubMenu === '급여계약 관리' || activeSubMenu === '급여 계약관리') ? (
+            <SalaryContractPage />
+          ) : (
+            <EmployeeManagementPage />
+          )
         ) : (activeMenu === '수급자 관리' && activeSubMenu === '수급자 기록 관리') ? (
           <BeneficiaryRecordPage />
         ) : (
