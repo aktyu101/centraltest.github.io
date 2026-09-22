@@ -1824,143 +1824,132 @@ export default function SalaryContractPage() {
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.longServiceAllowance.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'longServiceAllowance', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 6. 중증가산수당 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.severeCareAllowance.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'severeCareAllowance', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 7. 요양보호사 보수교육비 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.refresherTrainingFee.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'refresherTrainingFee', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 8. 원거리교통비 가산수당 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.remoteTransportAllowance.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'remoteTransportAllowance', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 9. 간호가산수당 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.nurseAddAllowance.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'nurseAddAllowance', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 10. 식대 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.mealAllowance.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'mealAllowance', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 11. 자가운전보조금 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.carAllowance.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'carAllowance', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 12. 교육비 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.educationAllowance.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'educationAllowance', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 13. 농어촌특별수당 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.ruralSpecialAllowance.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'ruralSpecialAllowance', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 14. 기타수당2 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.otherAllowance2.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'otherAllowance2', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                             {/* 15. 기타수당3 */}
                             <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
                               <input
                                 type="text"
-                                disabled={!isIndividual}
                                 value={profile.general.otherAllowance3.toLocaleString()}
                                 onChange={e => {
                                   const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
                                   handleGeneralItemChange(emp.id, 'otherAllowance3', val)
                                 }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
                               />
                             </td>
                           </>
