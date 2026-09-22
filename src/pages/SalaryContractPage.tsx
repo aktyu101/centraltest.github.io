@@ -1521,7 +1521,7 @@ export default function SalaryContractPage() {
               <table className={`w-full text-left border-collapse text-[12px] border-b border-[#c2cfdf] ${hourlyTab === '기본설정' ? 'min-w-[900px]' : hourlyTab === '일반시급' ? 'min-w-[1800px]' : 'min-w-[1600px]'}`}>
                 <thead className="bg-[#f4f7fc] text-[#283445] font-bold border-b border-[#c2cfdf] sticky top-0 z-20">
                   <tr>
-                    <th className="py-2 px-2.5 border-r border-[#c2cfdf] w-[40px] min-w-[40px] max-w-[40px] text-center sticky left-0 bg-[#f4f7fc] z-30">
+                    <th className="py-2 px-2.5 w-[40px] min-w-[40px] max-w-[40px] text-center sticky left-0 bg-[#f4f7fc] z-30 shadow-[inset_-1px_0_0_#c2cfdf]">
                       <input
                         type="checkbox"
                         checked={selectedHourlyIds.length === hourlyEmployees.length && hourlyEmployees.length > 0}
@@ -1530,11 +1530,11 @@ export default function SalaryContractPage() {
                       />
                     </th>
                     {/* 종사자 정보: 이름 / 만나이 / 상태 / 직종 / 입사일, 퇴사일 */}
-                    <th className="py-2 px-3 border-r border-[#c2cfdf] w-[210px] min-w-[210px] max-w-[210px] sticky left-[40px] bg-[#f4f7fc] z-30">
+                    <th className="py-2 px-3 w-[210px] min-w-[210px] max-w-[210px] sticky left-[40px] bg-[#f4f7fc] z-30 shadow-[inset_-1px_0_0_#c2cfdf]">
                       종사자 정보
                     </th>
                     {/* 급여계약 설정 - 모든 탭에서 sticky 고정 및 굵은 우측 경계 구분선 */}
-                    <th className="py-2 px-2.5 border-r-2 border-r-[#94a3b8] w-[140px] min-w-[140px] max-w-[140px] text-center sticky left-[250px] bg-[#f4f7fc] z-30 shadow-[3px_0_6px_rgba(0,0,0,0.08)]">
+                    <th className="py-2 px-2.5 w-[140px] min-w-[140px] max-w-[140px] text-center sticky left-[250px] bg-[#f4f7fc] z-30 shadow-[inset_-2px_0_0_#94a3b8,3px_0_6px_rgba(0,0,0,0.08)]">
                       급여계약 설정
                     </th>
                     {/* ── 탭별 동적 컬럼 ── */}
@@ -1586,7 +1586,7 @@ export default function SalaryContractPage() {
                     )}
 
                     {/* 액션 (계약삭제 / 계약등록 / 저장) */}
-                    <th className="py-2 px-3 text-center w-[110px] min-w-[110px] max-w-[110px] sticky right-0 bg-[#f4f7fc] z-30 border-l-2 border-l-[#94a3b8] shadow-[-3px_0_6px_rgba(0,0,0,0.06)] whitespace-nowrap">
+                    <th className="py-2 px-3 text-center w-[110px] min-w-[110px] max-w-[110px] sticky right-0 bg-[#f4f7fc] z-30 shadow-[inset_2px_0_0_#94a3b8,-3px_0_6px_rgba(0,0,0,0.06)] whitespace-nowrap">
                       계약관리
                     </th>
                   </tr>
@@ -1613,7 +1613,7 @@ export default function SalaryContractPage() {
                           }`}
                       >
                         {/* 1. 체크박스 */}
-                        <td className={`py-2 px-2 text-center border-r border-[#c2cfdf] w-[40px] min-w-[40px] max-w-[40px] sticky left-0 z-10 ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
+                        <td className={`py-2 px-2 text-center w-[40px] min-w-[40px] max-w-[40px] sticky left-0 z-10 shadow-[inset_-1px_0_0_#c2cfdf] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -1623,7 +1623,7 @@ export default function SalaryContractPage() {
                         </td>
 
                         {/* 2. 종사자 정보 (이름 / 만나이 / 상태 / 직종 / 입사일, 퇴사일) */}
-                        <td className={`py-1.5 px-3 border-r border-[#c2cfdf] w-[210px] min-w-[210px] max-w-[210px] sticky left-[40px] z-10 ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
+                        <td className={`py-1.5 px-3 w-[210px] min-w-[210px] max-w-[210px] sticky left-[40px] z-10 shadow-[inset_-1px_0_0_#c2cfdf] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
                           <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
                             <span className="font-bold text-[#0e1225] text-[12.5px] truncate max-w-[85px]">{emp.name}</span>
                             <span className="text-[11px] text-[#64748b]">({emp.age}세)</span>
@@ -1651,7 +1651,7 @@ export default function SalaryContractPage() {
                         </td>
 
                         {/* 3. 급여계약 설정 - 모든 탭에서 sticky 고정 및 굵은 우측 경계 구분선 */}
-                        <td className={`py-1.5 px-2 text-center border-r-2 border-r-[#94a3b8] w-[140px] min-w-[140px] max-w-[140px] sticky left-[250px] z-10 shadow-[3px_0_6px_rgba(0,0,0,0.08)] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
+                        <td className={`py-1.5 px-2 text-center w-[140px] min-w-[140px] max-w-[140px] sticky left-[250px] z-10 shadow-[inset_-2px_0_0_#94a3b8,3px_0_6px_rgba(0,0,0,0.08)] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
                           <div className="flex items-center justify-center gap-2 text-[11px]">
                             <label className="flex items-center gap-1 cursor-pointer">
                               <input
@@ -2127,7 +2127,7 @@ export default function SalaryContractPage() {
                         )}
 
                         {/* 10. 계약 관리 액션 버튼: 계약삭제 / 계약등록 / 저장 */}
-                        <td className={`py-1 px-2 text-center w-[110px] min-w-[110px] max-w-[110px] sticky right-0 z-10 border-l-2 border-l-[#94a3b8] shadow-[-3px_0_6px_rgba(0,0,0,0.06)] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
+                        <td className={`py-1 px-2 text-center w-[110px] min-w-[110px] max-w-[110px] sticky right-0 z-10 shadow-[inset_2px_0_0_#94a3b8,-3px_0_6px_rgba(0,0,0,0.06)] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
                           <div className="flex items-center justify-center gap-1">
                             {isContracted ? (
                               <>
