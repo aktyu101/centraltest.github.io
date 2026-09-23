@@ -85,6 +85,11 @@ export interface HourlyWageProfile {
   isEdited?: boolean
 }
 
+// 케어포 대조용 프로필 (케어포 등록 여부 포함)
+export interface CareforHourlyProfile extends HourlyWageProfile {
+  isRegisteredInCarefor: boolean // 케어포에 등록된 종사자인지 여부
+}
+
 export interface EmployeeSalaryProfile {
   id: string
   name: string
@@ -100,6 +105,7 @@ export interface EmployeeSalaryProfile {
   mainJob: string
   mainOffice: string
   isContracted: boolean // 계약 등록 여부 (미계약자 구분)
+  isCareforRegistered?: boolean // 케어포 등록 여부 (기본 true, 미등록 시 false)
   // 현재 급여 계약 정보 (피그마 뷰 연동)
   currentContract: {
     period: string
@@ -546,7 +552,7 @@ const INITIAL_EMPLOYEES: EmployeeSalaryProfile[] = [
       { id: 'H5', no: 1, period: '2026.01.01 ~ 2026.12.31', contractType: '방문급여', amount: 12384, createdAt: '2026.01.05 13:40' },
     ],
   },
-  // 미계약 종사자 샘플 1
+  // 미계약 종사자 샘플 1 (케어포 미등록)
   {
     id: 'EMP-006',
     name: '강순자',
@@ -562,6 +568,7 @@ const INITIAL_EMPLOYEES: EmployeeSalaryProfile[] = [
     mainJob: '방문요양',
     mainOffice: '재가복지팀',
     isContracted: false, // 미계약 상태
+    isCareforRegistered: false, // 케어포 미등록 종사자
     currentContract: {
       period: '2026.01.01 ~ 2026.12.31',
       salaryType: '방문급여',
@@ -595,7 +602,7 @@ const INITIAL_EMPLOYEES: EmployeeSalaryProfile[] = [
     },
     history: [],
   },
-  // 미계약 종사자 샘플 2
+  // 미계약 종사자 샘플 2 (케어포 미등록)
   {
     id: 'EMP-007',
     name: '윤미경',
@@ -611,6 +618,7 @@ const INITIAL_EMPLOYEES: EmployeeSalaryProfile[] = [
     mainJob: '방문간호',
     mainOffice: '의료지원팀',
     isContracted: false, // 미계약 상태
+    isCareforRegistered: false, // 케어포 미등록 종사자
     currentContract: {
       period: '2026.02.01 ~ 2027.01.31',
       salaryType: '방문급여',
@@ -621,7 +629,7 @@ const INITIAL_EMPLOYEES: EmployeeSalaryProfile[] = [
       dourunuriEmployment: false,
       workType: '시간제',
       longTermCareDiscount: true,
-      calcSetting: '개별 설정',
+      calcSetting: '시설 설정',
       monthlyTotal: 0,
       regularHourlyWage: 15000,
       withholdingTaxTotal: 0,
@@ -741,6 +749,52 @@ export default function SalaryContractPage() {
   const [modalOnlyUncontracted, setModalOnlyUncontracted] = useState<boolean>(false)
   const [modalAddPeriod, setModalAddPeriod] = useState<string>('2026.01.01 ~ 2026.12.31')
 
+  // 타프로그램 계약 비교 모드 (인라인 2단 행 대조)
+  const [showOtherProgramCompare, setShowOtherProgramCompare] = useState<boolean>(false)
+
+  // 계약기간 날짜 선택 모달 상태
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState<boolean>(false)
+  const [datePickerTarget, setDatePickerTarget] = useState<'batch' | 'modal' | string | null>(null)
+  const [datePickerStart, setDatePickerStart] = useState<string>('2026-01-01')
+  const [datePickerEnd, setDatePickerEnd] = useState<string>('2026-12-31')
+
+  // 날짜 선택 모달 열기
+  const openDatePicker = (target: 'batch' | 'modal' | 'individual' | string, currentPeriodStr?: string) => {
+    setDatePickerTarget(target)
+    let s = '2026-01-01'
+    let e = '2026-12-31'
+    if (currentPeriodStr && currentPeriodStr.includes('~')) {
+      const parts = currentPeriodStr.split('~').map(p => p.trim().replace(/\./g, '-'))
+      if (parts[0] && /^\d{4}-\d{2}-\d{2}$/.test(parts[0])) s = parts[0]
+      if (parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1])) e = parts[1]
+    }
+    setDatePickerStart(s)
+    setDatePickerEnd(e)
+    setIsDatePickerOpen(true)
+  }
+
+  // 날짜 선택 모달 적용
+  const applyDatePicker = () => {
+    const sFormatted = datePickerStart.replace(/-/g, '.')
+    const eFormatted = datePickerEnd.replace(/-/g, '.')
+    const formattedPeriod = `${sFormatted} ~ ${eFormatted}`
+
+    if (datePickerTarget === 'batch') {
+      setBatchPeriod(formattedPeriod)
+    } else if (datePickerTarget === 'modal') {
+      setModalAddPeriod(formattedPeriod)
+    } else if (datePickerTarget === 'individual') {
+      setModalForm(prev => ({
+        ...prev,
+        periodStart: sFormatted,
+        periodEnd: eFormatted,
+      }))
+    } else if (datePickerTarget) {
+      handleProfileChange(datePickerTarget, 'period', formattedPeriod)
+    }
+    setIsDatePickerOpen(false)
+  }
+
   // ── [개별상세 뷰 전용 필터 상태] ──
   const [statusFilter, setStatusFilter] = useState<string>('전체')
   const [roleFilter, setRoleFilter] = useState<string>('전체')
@@ -825,6 +879,55 @@ export default function SalaryContractPage() {
       general: { ...FACILITY_BASE_GENERAL },
       cases: { ...FACILITY_BASE_CASES },
       isContracted: emp.isContracted,
+    }
+  }
+
+  // 케어포 기준 계약 데이터 헬퍼 (비교 원본 데이터)
+  const getCareforHourlyProfile = (emp: EmployeeSalaryProfile): CareforHourlyProfile => {
+    const isRegistered = emp.isCareforRegistered !== false
+    return {
+      isRegisteredInCarefor: isRegistered,
+      period: isRegistered ? '2026.01.01 ~ 2026.12.31' : '-',
+      calcSetting: '시설 기초설정',
+      dependentsTotal: isRegistered ? 1 : 0,
+      dependentsMinor: 0,
+      taxMethod: '근로소득세',
+      deductCopayment: false,
+      dourunuriNationalPension: false,
+      dourunuriHealthInsurance: false,
+      longTermCare30Discount: '사용',
+      general: {
+        baseWage: isRegistered ? 10030 : 0,
+        weeklyHolidayAllowance: isRegistered ? 2006 : 0,
+        annualLeaveAllowance: isRegistered ? 580 : 0,
+        otherAllowance1: 0,
+        longServiceAllowance: 0,
+        severeCareAllowance: 0,
+        refresherTrainingFee: 0,
+        remoteTransportAllowance: 0,
+        nurseAddAllowance: 0,
+        mealAllowance: 0,
+        carAllowance: 0,
+        educationAllowance: 0,
+        ruralSpecialAllowance: 0,
+        otherAllowance2: 0,
+        otherAllowance3: 0,
+      },
+      cases: {
+        familyCare60m: isRegistered ? 19500 : 0,
+        familyCare90m: isRegistered ? 29500 : 0,
+        allDayCare12to24: isRegistered ? 120000 : 0,
+        bathCarIn60m: isRegistered ? 16000 : 0,
+        bathCarIn40m: isRegistered ? 14000 : 0,
+        bathCarHome60m: isRegistered ? 15000 : 0,
+        bathCarHome40m: isRegistered ? 13000 : 0,
+        bathNormal60m: isRegistered ? 14000 : 0,
+        bathNormal40m: isRegistered ? 12000 : 0,
+        nurseVisit15m: isRegistered ? 15000 : 0,
+        nurseVisit30m: isRegistered ? 25000 : 0,
+        nurseVisit60m: isRegistered ? 35000 : 0,
+      },
+      isContracted: isRegistered && emp.isContracted,
     }
   }
 
@@ -1308,12 +1411,21 @@ export default function SalaryContractPage() {
                 <div className="flex items-center gap-3 shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[11.5px] font-bold text-[#475569] whitespace-nowrap">계약기간</span>
-                    <input
-                      type="text"
-                      value={batchPeriod}
-                      onChange={e => setBatchPeriod(e.target.value)}
-                      className="w-[220px] h-[28px] px-2 bg-white border border-[#c2cfdf] rounded-[4px] text-[12px] font-semibold text-[#0e1225]"
-                    />
+                    <div
+                      onClick={() => openDatePicker('batch', batchPeriod)}
+                      className="flex items-center gap-1.5 w-[220px] h-[28px] px-2 bg-white border border-[#c2cfdf] hover:border-[#2a3461] rounded-[4px] cursor-pointer shadow-2xs transition-colors"
+                      title="클릭하여 계약기간 설정 모달 열기"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                      </svg>
+                      <span className="text-[12px] font-semibold text-[#0e1225] select-none truncate">
+                        {batchPeriod}
+                      </span>
+                    </div>
                   </div>
                   <span className="text-[11px] text-[#64748b] whitespace-nowrap">
                     ※ 세무/공제/지원은 개별 설정
@@ -1496,24 +1608,36 @@ export default function SalaryContractPage() {
                 </span>
               </div>
 
-              {/* 우측: 신규 시급제 종사자 추가 버튼 */}
-              <button
-                onClick={() => {
-                  setSelectedModalEmpIds([])
-                  setModalSearchKeyword('')
-                  setModalRoleFilter('전체')
-                  setModalOnlyUncontracted(false)
-                  setModalAddPeriod('2026.01.01 ~ 2026.12.31')
-                  setIsAddEmpModalOpen(true)
-                }}
-                className="h-[30px] px-3 bg-[#2a3461] hover:bg-[#38467d] text-white text-[12px] font-bold rounded-[4px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                신규 시급제 종사자 추가
-              </button>
+              {/* 우측: 타프로그램 계약 비교 체크박스 + 신규 시급제 종사자 추가 버튼 */}
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#c2cfdf] hover:border-[#7c3aed] rounded-[4px] cursor-pointer text-[12px] font-bold text-[#5b21b6] shadow-2xs transition-all select-none">
+                  <input
+                    type="checkbox"
+                    checked={showOtherProgramCompare}
+                    onChange={e => setShowOtherProgramCompare(e.target.checked)}
+                    className="cursor-pointer accent-[#7c3aed] size-3.5"
+                  />
+                  <span>케어포 계약비교</span>
+                </label>
+
+                <button
+                  onClick={() => {
+                    setSelectedModalEmpIds([])
+                    setModalSearchKeyword('')
+                    setModalRoleFilter('전체')
+                    setModalOnlyUncontracted(false)
+                    setModalAddPeriod('2026.01.01 ~ 2026.12.31')
+                    setIsAddEmpModalOpen(true)
+                  }}
+                  className="h-[30px] px-3 bg-[#2a3461] hover:bg-[#38467d] text-white text-[12px] font-bold rounded-[4px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  신규 시급제 종사자 추가
+                </button>
+              </div>
             </div>
 
             {/* 테이블 본문 */}
@@ -1601,554 +1725,834 @@ export default function SalaryContractPage() {
                     const isRowEdited = !!profile.isEdited
 
                     return (
-                      <tr
-                        key={emp.id}
-                        className={`transition-colors ${!isContracted
-                          ? 'bg-[#fffaf0] hover:bg-[#fff6e5]' // 미계약자 전용 음영 배경
-                          : isRowEdited
-                            ? 'bg-[#f0f9ff]'
-                            : isSelected
-                              ? 'bg-[#f8fafc]'
-                              : 'hover:bg-[#fcfdfe]'
-                          }`}
-                      >
-                        {/* 1. 체크박스 */}
-                        <td className={`py-2 px-2 text-center w-[40px] min-w-[40px] max-w-[40px] sticky left-0 z-10 shadow-[inset_-1px_0_0_#c2cfdf] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelect(emp.id)}
-                            className="cursor-pointer"
-                          />
-                        </td>
+                      <React.Fragment key={emp.id}>
+                        <tr
+                          className={`transition-colors ${!isContracted
+                            ? 'bg-[#fffaf0] hover:bg-[#fff6e5]' // 미계약자 전용 음영 배경
+                            : isRowEdited
+                              ? 'bg-[#f0f9ff]'
+                              : isSelected
+                                ? 'bg-[#f8fafc]'
+                                : 'hover:bg-[#fcfdfe]'
+                            }`}
+                        >
+                          {/* 1. 체크박스 */}
+                          <td className={`py-2 px-2 text-center w-[40px] min-w-[40px] max-w-[40px] sticky left-0 z-10 shadow-[inset_-1px_0_0_#c2cfdf] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelect(emp.id)}
+                              className="cursor-pointer"
+                            />
+                          </td>
 
-                        {/* 2. 종사자 정보 (이름 / 만나이 / 상태 / 직종 / 입사일, 퇴사일) */}
-                        <td className={`py-1.5 px-3 w-[210px] min-w-[210px] max-w-[210px] sticky left-[40px] z-10 shadow-[inset_-1px_0_0_#c2cfdf] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
-                          <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
-                            <span className="font-bold text-[#0e1225] text-[12.5px] truncate max-w-[85px]">{emp.name}</span>
-                            <span className="text-[11px] text-[#64748b]">({emp.age}세)</span>
-                            <span
-                              className={`inline-block px-1.5 py-0.2 text-[10px] font-bold rounded-[3px] ${emp.status === '재직'
-                                ? 'bg-[#e6f4ea] text-[#137333]'
-                                : emp.status === '휴직'
-                                  ? 'bg-[#fef7e0] text-[#b06000]'
-                                  : 'bg-[#fce8e6] text-[#c5221f]'
+                          {/* 2. 종사자 정보 (이름 / 만나이 / 상태 / 직종 / 입사일, 퇴사일) */}
+                          <td className={`py-1.5 px-3 w-[210px] min-w-[210px] max-w-[210px] sticky left-[40px] z-10 shadow-[inset_-1px_0_0_#c2cfdf] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
+                            <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+                              <span className="font-bold text-[#0e1225] text-[12.5px] truncate max-w-[85px]">{emp.name}</span>
+                              <span className="text-[11px] text-[#64748b]">({emp.age}세)</span>
+                              <span
+                                className={`inline-block px-1.5 py-0.2 text-[10px] font-bold rounded-[3px] ${emp.status === '재직'
+                                  ? 'bg-[#e6f4ea] text-[#137333]'
+                                  : emp.status === '휴직'
+                                    ? 'bg-[#fef7e0] text-[#b06000]'
+                                    : 'bg-[#fce8e6] text-[#c5221f]'
+                                  }`}
+                              >
+                                {emp.status}
+                              </span>
+                              {!isContracted && (
+                                <span className="px-1 py-0.2 rounded text-[10px] font-bold bg-[#ef5a27] text-white">
+                                  미계약
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-[#475569] mt-0.5 truncate">
+                              <span className="font-semibold text-[#2a3461]">{emp.role}</span>
+                              <span className="text-[#94a3b8] mx-1">|</span>
+                              <span>{emp.hireDate} ~ {emp.leaveDate}</span>
+                            </div>
+                          </td>
+
+                          {/* 3. 급여계약 설정 - 모든 탭에서 sticky 고정 및 굵은 우측 경계 구분선 */}
+                          <td className={`py-1.5 px-2 text-center w-[140px] min-w-[140px] max-w-[140px] sticky left-[250px] z-10 shadow-[inset_-2px_0_0_#94a3b8,3px_0_6px_rgba(0,0,0,0.08)] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
+                            <div className="flex items-center justify-center gap-2 text-[11px]">
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`calcSetting-${emp.id}`}
+                                  checked={profile.calcSetting === '시설 기초설정'}
+                                  onChange={() => handleProfileChange(emp.id, 'calcSetting', '시설 기초설정')}
+                                />
+                                <span className={profile.calcSetting === '시설 기초설정' ? 'font-bold text-[#2a3461]' : 'text-[#64748b]'}>기초설정</span>
+                              </label>
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`calcSetting-${emp.id}`}
+                                  checked={profile.calcSetting === '개별 설정'}
+                                  onChange={() => handleProfileChange(emp.id, 'calcSetting', '개별 설정')}
+                                />
+                                <span className={profile.calcSetting === '개별 설정' ? 'font-bold text-[#ef5a27]' : 'text-[#64748b]'}>개별설정</span>
+                              </label>
+                            </div>
+                          </td>
+
+                          {/* ── 탭별 동적 셀 ── */}
+                          {hourlyTab === '기본설정' ? (
+                            <>
+
+                              {/* 5. 부양가족수: 총 N명 / 20세이하 N명 */}
+                              <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf] whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1 text-[11px] whitespace-nowrap">
+                                  <span>총</span>
+                                  <input
+                                    type="number"
+                                    value={profile.dependentsTotal}
+                                    onChange={e => handleProfileChange(emp.id, 'dependentsTotal', parseInt(e.target.value, 10) || 1)}
+                                    className="w-[28px] h-[22px] text-center border rounded text-[11px] font-bold bg-white border-[#c2cfdf]"
+                                  />
+                                  <span className="text-[#64748b] text-[10.5px]">(20세↓</span>
+                                  <input
+                                    type="number"
+                                    value={profile.dependentsMinor}
+                                    onChange={e => handleProfileChange(emp.id, 'dependentsMinor', parseInt(e.target.value, 10) || 0)}
+                                    className="w-[28px] h-[22px] text-center border rounded text-[11px] font-bold bg-white border-[#c2cfdf]"
+                                  />
+                                  <span className="text-[#64748b] text-[10.5px]">)</span>
+                                </div>
+                              </td>
+
+                              {/* 6. 원천징수 방식 */}
+                              <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
+                                <select
+                                  value={profile.taxMethod}
+                                  onChange={e => handleProfileChange(emp.id, 'taxMethod', e.target.value as any)}
+                                  className="h-[24px] px-1 text-[11px] font-semibold rounded border bg-white border-[#c2cfdf] text-[#0e1225]"
+                                >
+                                  <option value="근로소득세">근로소득세</option>
+                                  <option value="사업소득세">사업소득세</option>
+                                </select>
+                              </td>
+
+                              {/* 7. 본인부담금 공제 체크박스 */}
+                              <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
+                                <input
+                                  type="checkbox"
+                                  checked={profile.deductCopayment}
+                                  onChange={e => handleProfileChange(emp.id, 'deductCopayment', e.target.checked)}
+                                  className="cursor-pointer"
+                                />
+                              </td>
+
+                              {/* 8. 두루누리 지원: 국민연금 / 건강보험 */}
+                              <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
+                                <div className="flex items-center justify-center gap-1.5 text-[11px]">
+                                  <label className="flex items-center gap-0.5 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={profile.dourunuriNationalPension}
+                                      onChange={e => handleProfileChange(emp.id, 'dourunuriNationalPension', e.target.checked)}
+                                    />
+                                    <span>연금</span>
+                                  </label>
+                                  <label className="flex items-center gap-0.5 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={profile.dourunuriHealthInsurance}
+                                      onChange={e => handleProfileChange(emp.id, 'dourunuriHealthInsurance', e.target.checked)}
+                                    />
+                                    <span>건강</span>
+                                  </label>
+                                </div>
+                              </td>
+
+                              {/* 9. 장기요양보험 30%적용 */}
+                              <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
+                                <select
+                                  value={profile.longTermCare30Discount}
+                                  onChange={e => handleProfileChange(emp.id, 'longTermCare30Discount', e.target.value as any)}
+                                  className="h-[24px] px-1 text-[11px] font-semibold rounded border bg-white border-[#c2cfdf]"
+                                >
+                                  <option value="사용">사용</option>
+                                  <option value="미사용">미사용</option>
+                                </select>
+                              </td>
+
+                              {/* 10. 계약기간 */}
+                              <td className="py-1 px-1.5 border-r border-[#c2cfdf]">
+                                <div
+                                  onClick={() => openDatePicker(emp.id, profile.period)}
+                                  className="w-full h-[24px] px-1.5 flex items-center justify-between text-[11.5px] font-medium rounded bg-white border border-[#c2cfdf] hover:border-[#2a3461] cursor-pointer text-[#0e1225] select-none transition-colors"
+                                  title="클릭하여 계약기간 설정 모달 열기"
+                                >
+                                  <span className="truncate">{profile.period}</span>
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 ml-1">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                                  </svg>
+                                </div>
+                              </td>
+                            </>
+                          ) : hourlyTab === '일반시급' ? (
+                            <>
+
+                              {/* 1. 기본급 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf] bg-[#fffbf8]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.general.baseWage.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'baseWage', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] font-bold rounded ${isIndividual ? 'bg-white border border-[#ef5a27] text-[#ef5a27]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 2. 주휴수당 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.general.weeklyHolidayAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'weeklyHolidayAllowance', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] font-semibold rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 3. 연차수당 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.general.annualLeaveAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'annualLeaveAllowance', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 4. 기타수당1 (4대 시간당 기본항목 경계) */}
+                              <td className="py-1 px-1.5 text-right border-r-2 border-r-[#94a3b8] bg-[#f8fafc]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.general.otherAllowance1.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'otherAllowance1', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 5. 장기근속수당 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.longServiceAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'longServiceAllowance', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 6. 중증가산수당 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.severeCareAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'severeCareAllowance', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 7. 요양보호사 보수교육비 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.refresherTrainingFee.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'refresherTrainingFee', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 8. 원거리교통비 가산수당 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.remoteTransportAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'remoteTransportAllowance', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 9. 간호가산수당 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.nurseAddAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'nurseAddAllowance', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 10. 식대 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.mealAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'mealAllowance', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 11. 자가운전보조금 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.carAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'carAllowance', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 12. 교육비 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.educationAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'educationAllowance', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 13. 농어촌특별수당 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.ruralSpecialAllowance.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'ruralSpecialAllowance', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 14. 기타수당2 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.otherAllowance2.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'otherAllowance2', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                              {/* 15. 기타수당3 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  value={profile.general.otherAllowance3.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleGeneralItemChange(emp.id, 'otherAllowance3', val)
+                                  }}
+                                  className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
+                                />
+                              </td>
+                            </>
+                          ) : (
+                            /* ── 탭 B: 건별시급 12개 항목 셀 ── */
+                            <>
+                              {/* 1. 가족요양 60분 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf] bg-[#fffbf8]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.familyCare60m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'familyCare60m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] font-bold rounded ${isIndividual ? 'bg-white border border-[#ef5a27] text-[#ef5a27]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 2. 가족요양 90분 (가족요양 그룹 경계) */}
+                              <td className="py-1 px-1.5 text-right border-r-2 border-r-[#94a3b8] bg-[#fffbf8]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.familyCare90m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'familyCare90m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] font-bold rounded ${isIndividual ? 'bg-white border border-[#ef5a27] text-[#ef5a27]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 3. 종일방문요양 12~24시간 미만 (종일요양 경계) */}
+                              <td className="py-1 px-1.5 text-right border-r-2 border-r-[#94a3b8]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.allDayCare12to24.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'allDayCare12to24', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 4. 목욕 차량이용 차량내 60분 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.bathCarIn60m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'bathCarIn60m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 5. 목욕 차량이용 차량내 40분 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.bathCarIn40m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'bathCarIn40m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 6. 목욕 차량이용 가정내 60분 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.bathCarHome60m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'bathCarHome60m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 7. 목욕 차량이용 가정내 40분 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.bathCarHome40m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'bathCarHome40m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 8. 방문목욕 60분 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.bathNormal60m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'bathNormal60m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 9. 방문목욕 40분 (목욕 그룹 경계) */}
+                              <td className="py-1 px-1.5 text-right border-r-2 border-r-[#94a3b8]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.bathNormal40m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'bathNormal40m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 10. 방문간호 15분 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.nurseVisit15m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'nurseVisit15m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 11. 방문간호 30분 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.nurseVisit30m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'nurseVisit30m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                              {/* 12. 방문간호 60분 */}
+                              <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
+                                <input
+                                  type="text"
+                                  disabled={!isIndividual}
+                                  value={profile.cases.nurseVisit60m.toLocaleString()}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
+                                    handleCaseItemChange(emp.id, 'nurseVisit60m', val)
+                                  }}
+                                  className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
+                                />
+                              </td>
+                            </>
+                          )}
+
+                          {/* 10. 계약 관리 액션 버튼: 계약삭제 / 계약등록 / 저장 */}
+                          <td className={`py-1 px-2 text-center w-[110px] min-w-[110px] max-w-[110px] sticky right-0 z-10 shadow-[inset_2px_0_0_#94a3b8,-3px_0_6px_rgba(0,0,0,0.06)] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
+                            <div className="flex items-center justify-center gap-1">
+                              {isContracted ? (
+                                <>
+                                  {isRowEdited ? (
+                                    <button
+                                      onClick={() => handleSaveSingleRow(emp.id)}
+                                      className="px-2 py-0.5 bg-[#2a3461] hover:bg-[#364275] text-white text-[11px] font-bold rounded cursor-pointer"
+                                    >
+                                      저장
+                                    </button>
+                                  ) : (
+                                    <span className="text-[#94a3b8] text-[11px]">정상</span>
+                                  )}
+                                  <button
+                                    onClick={() => handleDeleteContract(emp.id)}
+                                    className="px-1.5 py-0.5 bg-white hover:bg-[#fff5f5] text-[#c5221f] border border-[#f5c2c7] text-[10.5px] font-bold rounded cursor-pointer transition-colors"
+                                    title="계약 삭제 (미계약 상태로 전환)"
+                                  >
+                                    계약삭제
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => handleRegisterContract(emp.id)}
+                                  className="px-2 py-1 bg-[#ef5a27] hover:bg-[#d84a1c] text-white text-[11px] font-bold rounded cursor-pointer shadow-2xs whitespace-nowrap"
+                                >
+                                  계약등록
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* 타프로그램 계약과 비교하기 인라인 서브 행 */}
+                        {showOtherProgramCompare && (() => {
+                          const careforProfile = getCareforHourlyProfile(emp)
+                          const isRegistered = careforProfile.isRegisteredInCarefor
+
+                          return (
+                            <tr
+                              key={`${emp.id}-compare`}
+                              className={`border-b border-[#ddd6fe] text-[11.5px] transition-colors ${isRegistered ? 'bg-[#f5f3ff]/60 hover:bg-[#f5f3ff]' : 'bg-[#f8fafc] hover:bg-[#f1f5f9]'
                                 }`}
                             >
-                              {emp.status}
-                            </span>
-                            {!isContracted && (
-                              <span className="px-1 py-0.2 rounded text-[10px] font-bold bg-[#ef5a27] text-white">
-                                미계약
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-[#475569] mt-0.5 truncate">
-                            <span className="font-semibold text-[#2a3461]">{emp.role}</span>
-                            <span className="text-[#94a3b8] mx-1">|</span>
-                            <span>{emp.hireDate} ~ {emp.leaveDate}</span>
-                          </div>
-                        </td>
+                              {/* 1. 체크박스 영역 (타사 라벨) */}
+                              <td className={`py-1.5 px-2 text-center w-[40px] min-w-[40px] max-w-[40px] sticky left-0 z-10 shadow-[inset_-1px_0_0_#c2cfdf] ${isRegistered ? 'bg-[#f5f3ff]' : 'bg-[#f8fafc]'
+                                }`}>
+                                <span className={`inline-block px-1 py-0.2 rounded text-[9.5px] font-extrabold text-white ${isRegistered ? 'bg-[#7c3aed]' : 'bg-[#94a3b8]'
+                                  }`}>
+                                  타사
+                                </span>
+                              </td>
 
-                        {/* 3. 급여계약 설정 - 모든 탭에서 sticky 고정 및 굵은 우측 경계 구분선 */}
-                        <td className={`py-1.5 px-2 text-center w-[140px] min-w-[140px] max-w-[140px] sticky left-[250px] z-10 shadow-[inset_-2px_0_0_#94a3b8,3px_0_6px_rgba(0,0,0,0.08)] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
-                          <div className="flex items-center justify-center gap-2 text-[11px]">
-                            <label className="flex items-center gap-1 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`calcSetting-${emp.id}`}
-                                checked={profile.calcSetting === '시설 기초설정'}
-                                onChange={() => handleProfileChange(emp.id, 'calcSetting', '시설 기초설정')}
-                              />
-                              <span className={profile.calcSetting === '시설 기초설정' ? 'font-bold text-[#2a3461]' : 'text-[#64748b]'}>기초설정</span>
-                            </label>
-                            <label className="flex items-center gap-1 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`calcSetting-${emp.id}`}
-                                checked={profile.calcSetting === '개별 설정'}
-                                onChange={() => handleProfileChange(emp.id, 'calcSetting', '개별 설정')}
-                              />
-                              <span className={profile.calcSetting === '개별 설정' ? 'font-bold text-[#ef5a27]' : 'text-[#64748b]'}>개별설정</span>
-                            </label>
-                          </div>
-                        </td>
-
-                        {/* ── 탭별 동적 셀 ── */}
-                        {hourlyTab === '기본설정' ? (
-                          <>
-
-                            {/* 5. 부양가족수: 총 N명 / 20세이하 N명 */}
-                            <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf] whitespace-nowrap">
-                              <div className="flex items-center justify-center gap-1 text-[11px] whitespace-nowrap">
-                                <span>총</span>
-                                <input
-                                  type="number"
-                                  value={profile.dependentsTotal}
-                                  onChange={e => handleProfileChange(emp.id, 'dependentsTotal', parseInt(e.target.value, 10) || 1)}
-                                  className="w-[28px] h-[22px] text-center border rounded text-[11px] font-bold bg-white border-[#c2cfdf]"
-                                />
-                                <span className="text-[#64748b] text-[10.5px]">(20세↓</span>
-                                <input
-                                  type="number"
-                                  value={profile.dependentsMinor}
-                                  onChange={e => handleProfileChange(emp.id, 'dependentsMinor', parseInt(e.target.value, 10) || 0)}
-                                  className="w-[28px] h-[22px] text-center border rounded text-[11px] font-bold bg-white border-[#c2cfdf]"
-                                />
-                                <span className="text-[#64748b] text-[10.5px]">)</span>
-                              </div>
-                            </td>
-
-                            {/* 6. 원천징수 방식 */}
-                            <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
-                              <select
-                                value={profile.taxMethod}
-                                onChange={e => handleProfileChange(emp.id, 'taxMethod', e.target.value as any)}
-                                className="h-[24px] px-1 text-[11px] font-semibold rounded border bg-white border-[#c2cfdf] text-[#0e1225]"
-                              >
-                                <option value="근로소득세">근로소득세</option>
-                                <option value="사업소득세">사업소득세</option>
-                              </select>
-                            </td>
-
-                            {/* 7. 본인부담금 공제 체크박스 */}
-                            <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
-                              <input
-                                type="checkbox"
-                                checked={profile.deductCopayment}
-                                onChange={e => handleProfileChange(emp.id, 'deductCopayment', e.target.checked)}
-                                className="cursor-pointer"
-                              />
-                            </td>
-
-                            {/* 8. 두루누리 지원: 국민연금 / 건강보험 */}
-                            <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
-                              <div className="flex items-center justify-center gap-1.5 text-[11px]">
-                                <label className="flex items-center gap-0.5 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={profile.dourunuriNationalPension}
-                                    onChange={e => handleProfileChange(emp.id, 'dourunuriNationalPension', e.target.checked)}
-                                  />
-                                  <span>연금</span>
-                                </label>
-                                <label className="flex items-center gap-0.5 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={profile.dourunuriHealthInsurance}
-                                    onChange={e => handleProfileChange(emp.id, 'dourunuriHealthInsurance', e.target.checked)}
-                                  />
-                                  <span>건강</span>
-                                </label>
-                              </div>
-                            </td>
-
-                            {/* 9. 장기요양보험 30%적용 */}
-                            <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
-                              <select
-                                value={profile.longTermCare30Discount}
-                                onChange={e => handleProfileChange(emp.id, 'longTermCare30Discount', e.target.value as any)}
-                                className="h-[24px] px-1 text-[11px] font-semibold rounded border bg-white border-[#c2cfdf]"
-                              >
-                                <option value="사용">사용</option>
-                                <option value="미사용">미사용</option>
-                              </select>
-                            </td>
-
-                            {/* 10. 계약기간 */}
-                            <td className="py-1 px-1.5 border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.period}
-                                onChange={e => handleProfileChange(emp.id, 'period', e.target.value)}
-                                className="w-full h-[24px] px-1 text-[12px] font-medium rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                          </>
-                        ) : hourlyTab === '일반시급' ? (
-                          <>
-
-                            {/* 1. 기본급 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf] bg-[#fffbf8]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.general.baseWage.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'baseWage', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] font-bold rounded ${isIndividual ? 'bg-white border border-[#ef5a27] text-[#ef5a27]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 2. 주휴수당 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.general.weeklyHolidayAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'weeklyHolidayAllowance', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] font-semibold rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 3. 연차수당 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.general.annualLeaveAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'annualLeaveAllowance', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 4. 기타수당1 (4대 시간당 기본항목 경계) */}
-                            <td className="py-1 px-1.5 text-right border-r-2 border-r-[#94a3b8] bg-[#f8fafc]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.general.otherAllowance1.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'otherAllowance1', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 5. 장기근속수당 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.longServiceAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'longServiceAllowance', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 6. 중증가산수당 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.severeCareAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'severeCareAllowance', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 7. 요양보호사 보수교육비 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.refresherTrainingFee.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'refresherTrainingFee', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 8. 원거리교통비 가산수당 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.remoteTransportAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'remoteTransportAllowance', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 9. 간호가산수당 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.nurseAddAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'nurseAddAllowance', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 10. 식대 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.mealAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'mealAllowance', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 11. 자가운전보조금 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.carAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'carAllowance', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 12. 교육비 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.educationAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'educationAllowance', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 13. 농어촌특별수당 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.ruralSpecialAllowance.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'ruralSpecialAllowance', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 14. 기타수당2 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.otherAllowance2.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'otherAllowance2', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                            {/* 15. 기타수당3 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                value={profile.general.otherAllowance3.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleGeneralItemChange(emp.id, 'otherAllowance3', val)
-                                }}
-                                className="w-full h-[24px] px-1 text-right text-[11.5px] rounded bg-white border border-[#c2cfdf] text-[#0e1225]"
-                              />
-                            </td>
-                          </>
-                        ) : (
-                          /* ── 탭 B: 건별시급 12개 항목 셀 ── */
-                          <>
-                            {/* 1. 가족요양 60분 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf] bg-[#fffbf8]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.familyCare60m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'familyCare60m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] font-bold rounded ${isIndividual ? 'bg-white border border-[#ef5a27] text-[#ef5a27]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 2. 가족요양 90분 (가족요양 그룹 경계) */}
-                            <td className="py-1 px-1.5 text-right border-r-2 border-r-[#94a3b8] bg-[#fffbf8]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.familyCare90m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'familyCare90m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] font-bold rounded ${isIndividual ? 'bg-white border border-[#ef5a27] text-[#ef5a27]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 3. 종일방문요양 12~24시간 미만 (종일요양 경계) */}
-                            <td className="py-1 px-1.5 text-right border-r-2 border-r-[#94a3b8]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.allDayCare12to24.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'allDayCare12to24', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 4. 목욕 차량이용 차량내 60분 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.bathCarIn60m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'bathCarIn60m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 5. 목욕 차량이용 차량내 40분 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.bathCarIn40m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'bathCarIn40m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 6. 목욕 차량이용 가정내 60분 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.bathCarHome60m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'bathCarHome60m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 7. 목욕 차량이용 가정내 40분 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.bathCarHome40m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'bathCarHome40m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 8. 방문목욕 60분 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.bathNormal60m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'bathNormal60m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 9. 방문목욕 40분 (목욕 그룹 경계) */}
-                            <td className="py-1 px-1.5 text-right border-r-2 border-r-[#94a3b8]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.bathNormal40m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'bathNormal40m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 10. 방문간호 15분 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.nurseVisit15m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'nurseVisit15m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 11. 방문간호 30분 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.nurseVisit30m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'nurseVisit30m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                            {/* 12. 방문간호 60분 */}
-                            <td className="py-1 px-1.5 text-right border-r border-[#c2cfdf]">
-                              <input
-                                type="text"
-                                disabled={!isIndividual}
-                                value={profile.cases.nurseVisit60m.toLocaleString()}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10) || 0
-                                  handleCaseItemChange(emp.id, 'nurseVisit60m', val)
-                                }}
-                                className={`w-full h-[24px] px-1 text-right text-[11.5px] rounded ${isIndividual ? 'bg-white border border-[#c2cfdf] text-[#0e1225]' : 'bg-transparent text-[#64748b]'}`}
-                              />
-                            </td>
-                          </>
-                        )}
-
-                        {/* 10. 계약 관리 액션 버튼: 계약삭제 / 계약등록 / 저장 */}
-                        <td className={`py-1 px-2 text-center w-[110px] min-w-[110px] max-w-[110px] sticky right-0 z-10 shadow-[inset_2px_0_0_#94a3b8,-3px_0_6px_rgba(0,0,0,0.06)] ${!isContracted ? 'bg-[#fffaf0]' : 'bg-white'}`}>
-                          <div className="flex items-center justify-center gap-1">
-                            {isContracted ? (
-                              <>
-                                {isRowEdited ? (
-                                  <button
-                                    onClick={() => handleSaveSingleRow(emp.id)}
-                                    className="px-2 py-0.5 bg-[#2a3461] hover:bg-[#364275] text-white text-[11px] font-bold rounded cursor-pointer"
-                                  >
-                                    저장
-                                  </button>
+                              {/* 2. 종사자 대조 안내: 케어포 시급제 vs 급여별(건별) 체계 차이 / 미등록 표기 */}
+                              <td className={`py-1.5 px-3 w-[210px] min-w-[210px] max-w-[210px] sticky left-[40px] z-10 shadow-[inset_-1px_0_0_#c2cfdf] ${isRegistered ? 'bg-[#f5f3ff]' : 'bg-[#f8fafc]'
+                                }`}>
+                                {isRegistered ? (
+                                  <>
+                                    <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+                                      <span className="font-bold text-[#6b21a8] text-[12px] truncate">{emp.name}</span>
+                                      <span className="px-1.5 py-0.2 text-[9.5px] font-bold rounded bg-[#ede9fe] text-[#6b21a8] border border-[#ddd6fe]">
+                                        {hourlyTab === '건별시급' ? '케어포: 급여별' : '케어포: 시급제'}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10.5px] text-[#7c3aed] mt-0.5 truncate font-medium">
+                                      {hourlyTab === '건별시급' ? '건별시급 전용 계약' : '일반시급 전용 계약'}
+                                    </div>
+                                  </>
                                 ) : (
-                                  <span className="text-[#94a3b8] text-[11px]">정상</span>
+                                  <>
+                                    <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+                                      <span className="font-bold text-[#64748b] text-[12px] truncate">{emp.name}</span>
+                                      <span className="px-1.5 py-0.2 text-[9.5px] font-bold rounded bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]">
+                                        케어포: 미등록
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-[#94a3b8] mt-0.5 truncate font-medium">
+                                      케어포 계약 데이터 없음
+                                    </div>
+                                  </>
                                 )}
-                                <button
-                                  onClick={() => handleDeleteContract(emp.id)}
-                                  className="px-1.5 py-0.5 bg-white hover:bg-[#fff5f5] text-[#c5221f] border border-[#f5c2c7] text-[10.5px] font-bold rounded cursor-pointer transition-colors"
-                                  title="계약 삭제 (미계약 상태로 전환)"
-                                >
-                                  계약삭제
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => handleRegisterContract(emp.id)}
-                                className="px-2 py-1 bg-[#ef5a27] hover:bg-[#d84a1c] text-white text-[11px] font-bold rounded cursor-pointer shadow-2xs whitespace-nowrap"
-                              >
-                                계약등록
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                              </td>
+
+                              {/* 3. 급여계약 설정 (케어포 미지원 또는 미등록: ✕ 표시 - 회색조) */}
+                              <td className={`py-1.5 px-2 text-center w-[140px] min-w-[140px] max-w-[140px] sticky left-[250px] z-10 shadow-[inset_-2px_0_0_#94a3b8,3px_0_6px_rgba(0,0,0,0.08)] ${isRegistered ? 'bg-[#f5f3ff]' : 'bg-[#f8fafc]'
+                                }`}>
+                                <span className="inline-block px-1.5 py-0.5 text-[10.5px] font-semibold text-[#64748b] bg-[#f1f5f9] rounded border border-[#cbd5e1]">
+                                  ✕ (미지원)
+                                </span>
+                              </td>
+
+                              {/* ── 탭별 대조 데이터 셀 (미등록 시 '-' 표기, 등록 시 1:1 Diff 표기) ── */}
+                              {hourlyTab === '기본설정' ? (
+                                <>
+                                  {/* 4. 부양가족수 */}
+                                  {isRegistered ? (() => {
+                                    const isDiff = careforProfile.dependentsTotal !== profile.dependentsTotal || careforProfile.dependentsMinor !== profile.dependentsMinor
+                                    return (
+                                      <td className={`py-1 px-1.5 text-center border-r border-[#c2cfdf] ${isDiff ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                        {careforProfile.dependentsTotal}명 ({careforProfile.dependentsMinor}명)
+                                      </td>
+                                    )
+                                  })() : (
+                                    <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                  )}
+
+                                  {/* 5. 원천징수 (케어포 미지원: ✕ 표시 - 회색조) */}
+                                  <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
+                                    <span className="inline-block px-1.5 py-0.5 text-[10.5px] font-semibold text-[#64748b] bg-[#f1f5f9] rounded border border-[#cbd5e1]">
+                                      ✕ (미지원)
+                                    </span>
+                                  </td>
+
+                                  {/* 6. 본인부담금 공제 */}
+                                  {isRegistered ? (() => {
+                                    const isDiff = careforProfile.deductCopayment !== profile.deductCopayment
+                                    return (
+                                      <td className={`py-1 px-1.5 text-center border-r border-[#c2cfdf] ${isDiff ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                        {careforProfile.deductCopayment ? '공제' : '미공제'}
+                                      </td>
+                                    )
+                                  })() : (
+                                    <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                  )}
+
+                                  {/* 7. 두루누리 지원 (케어포 미지원: ✕ 표시 - 회색조) */}
+                                  <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf]">
+                                    <span className="inline-block px-1.5 py-0.5 text-[10.5px] font-semibold text-[#64748b] bg-[#f1f5f9] rounded border border-[#cbd5e1]">
+                                      ✕ (미지원)
+                                    </span>
+                                  </td>
+
+                                  {/* 8. 장기요양30% */}
+                                  {isRegistered ? (() => {
+                                    const isDiff = careforProfile.longTermCare30Discount !== profile.longTermCare30Discount
+                                    return (
+                                      <td className={`py-1 px-1.5 text-center border-r border-[#c2cfdf] ${isDiff ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                        {careforProfile.longTermCare30Discount}
+                                      </td>
+                                    )
+                                  })() : (
+                                    <td className="py-1 px-1.5 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                  )}
+
+                                  {/* 9. 계약기간 */}
+                                  {isRegistered ? (() => {
+                                    const isDiff = careforProfile.period !== profile.period
+                                    return (
+                                      <td className={`py-1 px-2 border-r border-[#c2cfdf] text-[11px] ${isDiff ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                        {careforProfile.period}
+                                      </td>
+                                    )
+                                  })() : (
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                  )}
+                                </>
+                              ) : hourlyTab === '일반시급' ? (
+                                isRegistered ? (
+                                  <>
+                                    {/* 1. 기본급(h) */}
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.baseWage !== profile.general.baseWage ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.baseWage.toLocaleString()}
+                                    </td>
+                                    {/* 2. 주휴수당(h) */}
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.weeklyHolidayAllowance !== profile.general.weeklyHolidayAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.weeklyHolidayAllowance.toLocaleString()}
+                                    </td>
+                                    {/* 3. 연차수당(h) */}
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.annualLeaveAllowance !== profile.general.annualLeaveAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.annualLeaveAllowance.toLocaleString()}
+                                    </td>
+                                    {/* 4. 기타수당1(h) */}
+                                    <td className={`py-1 px-2 text-right border-r-2 border-r-[#94a3b8] ${careforProfile.general.otherAllowance1 !== profile.general.otherAllowance1 ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.otherAllowance1.toLocaleString()}
+                                    </td>
+                                    {/* 5~15. 제수당 11개 항목 (상이 시 빨간색 표시) */}
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.longServiceAllowance !== profile.general.longServiceAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.longServiceAllowance.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.severeCareAllowance !== profile.general.severeCareAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.severeCareAllowance.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.refresherTrainingFee !== profile.general.refresherTrainingFee ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.refresherTrainingFee.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.remoteTransportAllowance !== profile.general.remoteTransportAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.remoteTransportAllowance.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.nurseAddAllowance !== profile.general.nurseAddAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.nurseAddAllowance.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.mealAllowance !== profile.general.mealAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.mealAllowance.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.carAllowance !== profile.general.carAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.carAllowance.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.educationAllowance !== profile.general.educationAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.educationAllowance.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.ruralSpecialAllowance !== profile.general.ruralSpecialAllowance ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.ruralSpecialAllowance.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.otherAllowance2 !== profile.general.otherAllowance2 ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.otherAllowance2.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.general.otherAllowance3 !== profile.general.otherAllowance3 ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.general.otherAllowance3.toLocaleString()}
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r-2 border-r-[#94a3b8] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                  </>
+                                )
+                              ) : (
+                                /* 건별시급 12개 항목 대조 */
+                                isRegistered ? (
+                                  <>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.familyCare60m !== profile.cases.familyCare60m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.familyCare60m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r-2 border-r-[#94a3b8] ${careforProfile.cases.familyCare90m !== profile.cases.familyCare90m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.familyCare90m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r-2 border-r-[#94a3b8] ${careforProfile.cases.allDayCare12to24 !== profile.cases.allDayCare12to24 ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.allDayCare12to24.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.bathCarIn60m !== profile.cases.bathCarIn60m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.bathCarIn60m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.bathCarIn40m !== profile.cases.bathCarIn40m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.bathCarIn40m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.bathCarHome60m !== profile.cases.bathCarHome60m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.bathCarHome60m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.bathCarHome40m !== profile.cases.bathCarHome40m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.bathCarHome40m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.bathNormal60m !== profile.cases.bathNormal60m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.bathNormal60m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.bathNormal40m !== profile.cases.bathNormal40m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.bathNormal40m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.nurseVisit15m !== profile.cases.nurseVisit15m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.nurseVisit15m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.nurseVisit30m !== profile.cases.nurseVisit30m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.nurseVisit30m.toLocaleString()}
+                                    </td>
+                                    <td className={`py-1 px-2 text-right border-r border-[#c2cfdf] ${careforProfile.cases.nurseVisit60m !== profile.cases.nurseVisit60m ? 'text-[#dc2626] font-bold bg-[#fff5f5]' : 'text-[#475569]'}`}>
+                                      {careforProfile.cases.nurseVisit60m.toLocaleString()}
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r-2 border-r-[#94a3b8] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r-2 border-r-[#94a3b8] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                    <td className="py-1 px-2 text-center border-r border-[#c2cfdf] text-[#94a3b8] text-[11px]">-</td>
+                                  </>
+                                )
+                              )}
+
+                              {/* 우측 고정 영역 (총지급액 대조 / 미등록 안내) */}
+                              <td className={`py-1 px-2 text-center w-[110px] min-w-[110px] max-w-[110px] sticky right-0 z-10 shadow-[inset_2px_0_0_#94a3b8,-3px_0_6px_rgba(0,0,0,0.06)] ${isRegistered ? 'bg-[#f5f3ff]' : 'bg-[#f8fafc]'
+                                }`}>
+                                {isRegistered ? (
+                                  <span className="text-[10px] font-extrabold text-[#7c3aed] bg-[#ede9fe] px-1.5 py-0.5 rounded border border-[#ddd6fe] whitespace-nowrap">
+                                    총액 동일 대조
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-[#64748b] bg-[#f1f5f9] px-1.5 py-0.5 rounded border border-[#cbd5e1] whitespace-nowrap">
+                                    미등록 종사자
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })()}
+                      </React.Fragment>
                     )
                   })}
                 </tbody>
@@ -2351,20 +2755,25 @@ export default function SalaryContractPage() {
             <div className="p-4 flex flex-col gap-3 text-[12.5px]">
               <div>
                 <label className="text-[11.5px] font-bold text-[#475569] block mb-1">계약 기간</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={modalForm.periodStart}
-                    onChange={e => setModalForm(prev => ({ ...prev, periodStart: e.target.value }))}
-                    className="flex-1 h-[30px] px-2 border border-[#c2cfdf] rounded text-[12px]"
-                  />
-                  <span>~</span>
-                  <input
-                    type="text"
-                    value={modalForm.periodEnd}
-                    onChange={e => setModalForm(prev => ({ ...prev, periodEnd: e.target.value }))}
-                    className="flex-1 h-[30px] px-2 border border-[#c2cfdf] rounded text-[12px]"
-                  />
+                <div
+                  onClick={() => openDatePicker('individual', `${modalForm.periodStart} ~ ${modalForm.periodEnd}`)}
+                  className="flex items-center justify-between w-full h-[32px] px-2.5 bg-white border border-[#c2cfdf] hover:border-[#2a3461] rounded cursor-pointer shadow-2xs transition-colors"
+                  title="클릭하여 계약기간 설정 모달 열기"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="16" y1="2" x2="16" y2="6"></line>
+                      <line x1="8" y1="2" x2="8" y2="6"></line>
+                      <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    <span className="text-[12px] font-semibold text-[#0e1225]">
+                      {modalForm.periodStart} ~ {modalForm.periodEnd}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-[#2a3461] font-bold bg-[#f0f4f9] px-2 py-0.5 rounded border border-[#cbd5e1]">
+                    날짜 변경
+                  </span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -2579,12 +2988,21 @@ export default function SalaryContractPage() {
 
                 <div className="flex items-center gap-2">
                   <span className="text-[12px] font-bold text-[#475569]">계약기간</span>
-                  <input
-                    type="text"
-                    value={modalAddPeriod}
-                    onChange={e => setModalAddPeriod(e.target.value)}
-                    className="w-[200px] h-[30px] px-2 bg-white border border-[#c2cfdf] rounded text-[12px] font-semibold text-[#0e1225]"
-                  />
+                  <div
+                    onClick={() => openDatePicker('modal', modalAddPeriod)}
+                    className="flex items-center gap-1.5 w-[200px] h-[30px] px-2.5 bg-white border border-[#c2cfdf] hover:border-[#2a3461] rounded cursor-pointer shadow-2xs transition-colors"
+                    title="클릭하여 계약기간 설정 모달 열기"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="16" y1="2" x2="16" y2="6"></line>
+                      <line x1="8" y1="2" x2="8" y2="6"></line>
+                      <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                    <span className="text-[12px] font-semibold text-[#0e1225] select-none truncate">
+                      {modalAddPeriod}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -2606,6 +3024,147 @@ export default function SalaryContractPage() {
                   선택 종사자 시급제 계약 일괄 추가 ({selectedModalEmpIds.length}명)
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── [계약기간 날짜 선택 모달 (Date Range Picker)] ── */}
+      {isDatePickerOpen && (
+        <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[8px] shadow-2xl border border-[#c2cfdf] w-full max-w-[460px] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
+            {/* 1. 모달 헤더 */}
+            <div className="p-3.5 px-4 bg-[#2a3461] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <h3 className="text-[14px] font-bold">계약기간 설정</h3>
+              </div>
+              <button
+                onClick={() => setIsDatePickerOpen(false)}
+                className="text-white/80 hover:text-white text-[18px] leading-none cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 2. 모달 본문 */}
+            <div className="p-4 flex flex-col gap-3.5 text-[12.5px]">
+              {/* 빠른 프리셋 버튼군 */}
+              <div>
+                <span className="text-[11.5px] font-bold text-[#475569] block mb-1.5">빠른 기간 프리셋 선택</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDatePickerStart('2026-01-01')
+                      setDatePickerEnd('2026-12-31')
+                    }}
+                    className={`py-1.5 px-2.5 rounded border text-[11.5px] font-bold transition-all cursor-pointer ${datePickerStart === '2026-01-01' && datePickerEnd === '2026-12-31'
+                        ? 'bg-[#ef5a27] text-white border-[#ef5a27] shadow-xs'
+                        : 'bg-[#f8fafc] text-[#334155] border-[#c2cfdf] hover:bg-[#eef2f7]'
+                      }`}
+                  >
+                    2026년 1년 (01.01 ~ 12.31)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDatePickerStart('2025-01-01')
+                      setDatePickerEnd('2025-12-31')
+                    }}
+                    className={`py-1.5 px-2.5 rounded border text-[11.5px] font-bold transition-all cursor-pointer ${datePickerStart === '2025-01-01' && datePickerEnd === '2025-12-31'
+                        ? 'bg-[#ef5a27] text-white border-[#ef5a27] shadow-xs'
+                        : 'bg-[#f8fafc] text-[#334155] border-[#c2cfdf] hover:bg-[#eef2f7]'
+                      }`}
+                  >
+                    2025년 1년 (01.01 ~ 12.31)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const year = datePickerStart.split('-')[0] || '2026'
+                      setDatePickerStart(`${year}-01-01`)
+                      setDatePickerEnd(`${year}-06-30`)
+                    }}
+                    className="py-1.5 px-2.5 rounded border text-[11.5px] font-semibold bg-[#f8fafc] text-[#334155] border-[#c2cfdf] hover:bg-[#eef2f7] transition-all cursor-pointer"
+                  >
+                    상반기 (01.01 ~ 06.30)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const year = datePickerStart.split('-')[0] || '2026'
+                      setDatePickerStart(`${year}-07-01`)
+                      setDatePickerEnd(`${year}-12-31`)
+                    }}
+                    className="py-1.5 px-2.5 rounded border text-[11.5px] font-semibold bg-[#f8fafc] text-[#334155] border-[#c2cfdf] hover:bg-[#eef2f7] transition-all cursor-pointer"
+                  >
+                    하반기 (07.01 ~ 12.31)
+                  </button>
+                </div>
+              </div>
+
+              <div className="h-[1px] bg-[#e2e8f0]" />
+
+              {/* 직접 날짜 선택 */}
+              <div>
+                <span className="text-[11.5px] font-bold text-[#475569] block mb-2">직접 날짜 범위 선택</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <span className="text-[11px] text-[#64748b] block mb-1">계약 시작일</span>
+                    <input
+                      type="date"
+                      value={datePickerStart}
+                      onChange={e => setDatePickerStart(e.target.value)}
+                      className="w-full h-[32px] px-2 bg-white border border-[#c2cfdf] rounded text-[12px] font-semibold text-[#0e1225]"
+                    />
+                  </div>
+                  <span className="text-[#64748b] font-bold mt-4">~</span>
+                  <div className="flex-1">
+                    <span className="text-[11px] text-[#64748b] block mb-1">계약 종료일</span>
+                    <input
+                      type="date"
+                      value={datePickerEnd}
+                      onChange={e => setDatePickerEnd(e.target.value)}
+                      className="w-full h-[32px] px-2 bg-white border border-[#c2cfdf] rounded text-[12px] font-semibold text-[#0e1225]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 선택 요약 배지 */}
+              <div className="p-2.5 bg-[#f0f4f9] rounded border border-[#cbd5e1] flex items-center justify-between text-[12px]">
+                <span className="text-[#64748b]">적용될 계약기간:</span>
+                <strong className="text-[#2a3461] font-bold">
+                  {datePickerStart.replace(/-/g, '.')} ~ {datePickerEnd.replace(/-/g, '.')}
+                </strong>
+              </div>
+            </div>
+
+            {/* 3. 모달 푸터 버튼 */}
+            <div className="p-3 bg-[#f8fafc] border-t border-[#c2cfdf] flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsDatePickerOpen(false)}
+                className="px-4 py-1.5 border border-[#c2cfdf] bg-white hover:bg-[#f1f5f9] rounded text-[12px] font-semibold text-[#475569] transition-colors cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={applyDatePicker}
+                className="px-4 py-1.5 bg-[#2a3461] hover:bg-[#38467d] text-white rounded text-[12px] font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                기간 적용
+              </button>
             </div>
           </div>
         </div>

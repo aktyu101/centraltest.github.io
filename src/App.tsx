@@ -7,6 +7,7 @@ import BeneficiaryRecordPage from './pages/BeneficiaryRecordPage'
 import BeneficiaryRecordOverviewPage from './pages/BeneficiaryRecordOverviewPage'
 import SalaryContractPage from './pages/SalaryContractPage'
 import BenefitCalculatorModal from './components/BenefitCalculatorModal'
+import EmploymentGrantModal from './components/EmploymentGrantModal'
 import DatePickerModal from './components/DatePickerModal'
 import topNavSvg from '@/imports/TopNav/svg-71k32nm55t'
 import rightSvg from '@/imports/Right/svg-39sn13e4v2'
@@ -3342,6 +3343,7 @@ export default function App() {
   const [isWorkspaceMaximized, setIsWorkspaceMaximized] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
   const [isCalcModalOpen, setIsCalcModalOpen] = useState(false)
+  const [isEmploymentGrantModalOpen, setIsEmploymentGrantModalOpen] = useState(false)
 
   const activeFilters = [filterContract, filterGrade, filterName, filterRoom].filter(Boolean).length
   const selected = DATA.find(b => b.id === selectedId) ?? null
@@ -3402,28 +3404,28 @@ export default function App() {
                 {/* 우측: 간편계산기 + 일일 방문일정 (상하 배치, 2칸 차지) */}
                 <div className="flex flex-col gap-2 lg:col-span-2">
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     {/* 1. 배상책임보험 */}
                     <LiabilityInsuranceWidget className="flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-[200px]" />
 
                     {/* 2. 재가급여 간편계산기 (위젯 형태) */}
                     <div className="flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-[200px]">
                       <div className="p-3 flex items-center justify-between border-b border-[#c2cfdf] bg-[#fafbfc]">
-                        <h2 className="text-[16px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none shrink-0">
-                          <span className="w-[4px] h-[16px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
+                        <h2 className="text-[15px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none shrink-0">
+                          <span className="w-[4px] h-[15px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
                           재가급여 간편계산기
                         </h2>
                       </div>
 
-                      <div className="flex-1 px-4 py-3 flex flex-col justify-center gap-4 bg-white">
-                        <p className="text-[12.5px] text-[#475569] leading-snug break-keep text-center mt-2">
-                          장기요양등급과 본인부담률을 기준으로 <br /><strong className="text-[#0e1225]">예상 급여 총액 및 본인부담금</strong>을 시뮬레이션 합니다.
+                      <div className="flex-1 px-3.5 py-2.5 flex flex-col justify-between bg-white">
+                        <p className="text-[11.5px] text-[#475569] leading-snug break-keep text-center mt-1">
+                          장기요양등급과 본인부담률 기준 <br /><strong className="text-[#0e1225]">예상 급여 총액 및 본인부담금</strong> 시뮬레이션
                         </p>
                         <button
                           onClick={() => setIsCalcModalOpen(true)}
-                          className="w-full h-[36px] shrink-0 flex items-center justify-center gap-1.5 rounded-[6px] bg-[#2a3461] text-[13px] font-semibold text-white hover:bg-[#364275] transition-colors shadow-xs cursor-pointer mb-2"
+                          className="w-full h-[34px] shrink-0 flex items-center justify-center gap-1.5 rounded-[6px] bg-[#2a3461] text-[12.5px] font-semibold text-white hover:bg-[#364275] transition-colors shadow-xs cursor-pointer mb-1"
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
                             <rect x="8" y="8" width="8" height="2"></rect>
                             <line x1="8" y1="13" x2="8.01" y2="13"></line>
@@ -3434,6 +3436,35 @@ export default function App() {
                             <line x1="16" y1="17" x2="16.01" y2="17"></line>
                           </svg>
                           간편계산기 실행
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 3. 숨은 고용지원금 찾기 (삼쩜삼 스타일 위젯) */}
+                    <div className="flex flex-col bg-white overflow-hidden w-full border border-[#c2cfdf] h-[200px]">
+                      <div className="p-3 flex items-center justify-between border-b border-[#c2cfdf] bg-[#fafbfc]">
+                        <h2 className="text-[15px] font-bold text-[#0e1225] inline-flex items-center gap-1.5 leading-none shrink-0">
+                          <span className="w-[4px] h-[15px] bg-[#ef5a27] inline-block rounded-[2px] shrink-0" />
+                          숨은 고용지원금 찾기
+                        </h2>
+                        <span className="px-1.5 py-0.2 text-[9.5px] font-extrabold rounded bg-[#fff7ed] text-[#c2410c] border border-[#fed7aa]">
+                          ⚡ 3초 환급조회
+                        </span>
+                      </div>
+
+                      <div className="flex-1 px-3.5 py-2.5 flex flex-col justify-between bg-white">
+                        <p className="text-[11.5px] text-[#475569] leading-snug break-keep text-center mt-1">
+                          우리 기관이 아직 신청 안 한 <br /><strong className="text-[#0e1225]">놓친 고용지원금 (평균 1,480만)</strong> 즉시 발견
+                        </p>
+                        <button
+                          onClick={() => setIsEmploymentGrantModalOpen(true)}
+                          className="w-full h-[34px] shrink-0 flex items-center justify-center gap-1.5 rounded-[6px] bg-gradient-to-r from-[#ef5a27] to-[#f97316] text-[12.5px] font-extrabold text-white hover:from-[#d84a1c] hover:to-[#ea580c] transition-all shadow-xs cursor-pointer mb-1"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                          </svg>
+                          놓친 지원금 3초 만에 조회하기
                         </button>
                       </div>
                     </div>
@@ -3697,6 +3728,12 @@ export default function App() {
       {/* 간편계산기 모달 */}
       {isCalcModalOpen && createPortal(
         <BenefitCalculatorModal onClose={() => setIsCalcModalOpen(false)} />,
+        document.body
+      )}
+
+      {/* 고용지원금 간편조회 모달 */}
+      {isEmploymentGrantModalOpen && createPortal(
+        <EmploymentGrantModal onClose={() => setIsEmploymentGrantModalOpen(false)} />,
         document.body
       )}
     </div>
