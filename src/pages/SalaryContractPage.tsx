@@ -1326,7 +1326,7 @@ export default function SalaryContractPage() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#eaedf2]">
       {/* ── 최상단 헤더 타이틀 & 뷰 모드 탭 바 ── */}
-      <div className="px-5 py-2.5 bg-white border-b border-[#c2cfdf] flex items-center justify-between shrink-0 shadow-2xs">
+      <div className="h-[60px] px-5 bg-white border-b border-[#c2cfdf] flex items-center justify-between shrink-0 shadow-2xs">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="w-[4px] h-[18px] bg-[#ef5a27] rounded-[2px]" />
